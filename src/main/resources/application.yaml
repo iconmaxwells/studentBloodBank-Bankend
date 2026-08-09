@@ -1,0 +1,59 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: bloodbank
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/studentBloodApp}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME:iconmaxwells}
+    password: ${DB_PASSWORD:0040105715@Icon}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASS:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+app:
+  cors:
+    origin: ${CORS_ORIGIN:http://localhost:5173}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:noreply@bloodbank.com}
+  sms:
+    enabled: ${SMS_ENABLED:false}
+    api-key: ${SMS_API_KEY:}
+  jobs:
+    expiry-cron: "0 0 2 * * *"
+    expiring-alert-cron: "0 0 8 * * *"
+  jwt:
+    secret: ${JWT_SECRET:MyVerySecretKeyThatIsAtLeast256BitsLongForHS256AlgorithmRequirement12345}
+    expiration: ${JWT_EXPIRATION:3600000}
+    refresh:
+      expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+logging:
+  level:
+    com.bloodbank.bloodbank: DEBUG
+    org.springframework.security: DEBUG
+
+springdoc:
+  api-docs:
+    path: /api/v1/docs
+  swagger-ui:
+    path: /api/v1/swagger-ui
+    operationsSorter: method
+    tagsSorter: alpha
