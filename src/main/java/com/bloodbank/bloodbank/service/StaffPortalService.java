@@ -58,7 +58,9 @@ public class StaffPortalService {
                 .filter(c -> c.getCollectionDate() != null && c.getCollectionDate().equals(today))
                 .count();
         long pendingTests = allCollections.stream()
-                .filter(c -> c.getStatus() == CollectionStatus.Testing)
+                .filter(c -> (c.getStatus() == CollectionStatus.Collected
+                        || c.getStatus() == CollectionStatus.Testing)
+                        && (c.getTestResult() == null || c.getTestResult() == TestOverallStatus.Pending))
                 .count();
         long completedToday = allCollections.stream()
                 .filter(c -> c.getCollectionDate() != null && c.getCollectionDate().equals(today)

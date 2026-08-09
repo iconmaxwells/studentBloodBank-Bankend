@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,7 +47,39 @@ public class CollectionService {
         Page<Collection> result = status != null
                 ? collectionRepository.findByStatus(status, pageable)
                 : collectionRepository.findAll(pageable);
-        return Map.of("items", result.getContent(), "meta", PageUtils.toMeta(result, page, limit));
+        List<Map<String, Object>> items = result.getContent().stream()
+                .map(this::enrichCollectionRow)
+                .toList();
+        return Map.of("items", items, "meta", PageUtils.toMeta(result, page, limit));
+    }
+
+    private Map<String, Object> enrichCollectionRow(Collection collection) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", collection.getId());
+        row.put("displayCode", collection.getDisplayCode());
+        row.put("donorId", collection.getDonorId());
+        row.put("staffId", collection.getStaffId());
+        row.put("sessionId", collection.getSessionId());
+        row.put("bloodGroup", collection.getBloodGroup());
+        row.put("bloodProductType", collection.getBloodProductType());
+        row.put("volumeMl", collection.getVolumeMl());
+        row.put("bagNumber", collection.getBagNumber());
+        row.put("collectionDate", collection.getCollectionDate());
+        row.put("collectionTime", collection.getCollectionTime());
+        row.put("location", collection.getLocation());
+        row.put("bloodBankId", collection.getBloodBankId());
+        row.put("preScreeningVitals", collection.getPreScreeningVitals());
+        row.put("anticoagulant", collection.getAnticoagulant());
+        row.put("storageLocation", collection.getStorageLocation());
+        row.put("status", collection.getStatus());
+        row.put("testResult", collection.getTestResult());
+        row.put("compensationAmount", collection.getCompensationAmount());
+        row.put("notes", collection.getNotes());
+        row.put("createdAt", collection.getCreatedAt());
+        row.put("updatedAt", collection.getUpdatedAt());
+        donorRepository.findById(collection.getDonorId()).ifPresent(donor ->
+                row.put("donorName", donor.getFirstName() + " " + donor.getLastName()));
+        return row;
     }
 
     @Transactional(readOnly = true)
