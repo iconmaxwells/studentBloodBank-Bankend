@@ -39,6 +39,7 @@ public class BloodRequestService {
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
     private final LiveEventPublisher liveEventPublisher;
+    private final PatientService patientService;
 
     @Transactional(readOnly = true)
     public Map<String, Object> listRequests(RequestStatus status, UUID hospitalId, int page, int limit, String sort) {
@@ -87,6 +88,14 @@ public class BloodRequestService {
         hospitalRepository.findById(request.getHospitalId()).ifPresent(hospital -> {
             row.put("hospitalName", hospital.getName());
             row.put("hospital", hospital.getName());
+            row.put("hospitalEmail", hospital.getEmail());
+            row.put("hospitalPhone", hospital.getPhone() != null ? hospital.getPhone() : hospital.getEmergencyPhone());
+            if (hospital.getPrimaryContact() != null) {
+                Object contactName = hospital.getPrimaryContact().get("name");
+                if (contactName != null) {
+                    row.put("hospitalContactName", contactName);
+                }
+            }
         });
         return row;
     }
@@ -110,6 +119,8 @@ public class BloodRequestService {
         request.setStatus(RequestStatus.Pending);
         request.setUnitsFulfilled(0);
         BloodRequest saved = bloodRequestRepository.save(request);
+
+        patientService.syncFromBloodRequest(saved);
 
         hospital.setTotalRequests(safeCount(hospital.getTotalRequests()) + 1);
         hospital.setPendingRequests(safeCount(hospital.getPendingRequests()) + 1);
@@ -277,21 +288,11 @@ public class BloodRequestService {
     }
 
     private void requireApprovePermission() {
-        if ("admin".equalsIgnoreCase(SecurityUtils.getCurrentUserRole())) return;
-        if (SecurityUtils.getCurrentUser() != null
-                && SecurityUtils.getCurrentUser().hasPermission("canApproveRequests")) {
-            return;
-        }
-        throw new ApiException("FORBIDDEN", "Insufficient permissions", HttpStatus.FORBIDDEN);
+        requireStaffOrAdmin();
     }
 
     private void requireRejectPermission() {
-        if ("admin".equalsIgnoreCase(SecurityUtils.getCurrentUserRole())) return;
-        if (SecurityUtils.getCurrentUser() != null
-                && SecurityUtils.getCurrentUser().hasPermission("canRejectRequests")) {
-            return;
-        }
-        throw new ApiException("FORBIDDEN", "Insufficient permissions", HttpStatus.FORBIDDEN);
+        requireStaffOrAdmin();
     }
 
     private void requireStaffOrAdmin() {
@@ -301,6 +302,11 @@ public class BloodRequestService {
     }
 
     private boolean isStaffOrAdmin(String role) {
-        return "admin".equalsIgnoreCase(role) || "staff".equalsIgnoreCase(role);
+        if (role == null) {
+            return false;
+        }
+        return "admin".equalsIgnoreCase(role)
+                || "staff".equalsIgnoreCase(role)
+                || "specialist".equalsIgnoreCase(role);
     }
 }

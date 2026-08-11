@@ -86,6 +86,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/donors", "/api/v1/donors/**").hasAnyRole("STAFF", "ADMIN", "DONOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/donors", "/api/v1/donors/**").hasAnyRole("ADMIN")
                         .requestMatchers("/api/v1/activity-logs/**").hasAnyRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/requests/*/approve",
+                                "/api/v1/requests/*/reject",
+                                "/api/v1/requests/*/process",
+                                "/api/v1/requests/*/complete"
+                        ).hasAnyRole("STAFF", "ADMIN", "SPECIALIST")
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll()
                 )

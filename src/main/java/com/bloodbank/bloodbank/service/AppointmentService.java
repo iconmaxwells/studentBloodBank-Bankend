@@ -56,8 +56,12 @@ public class AppointmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Donor"));
         appointment.setDonorId(donor.getId());
         appointment.setCode(displayCodeService.nextCode(EntityType.APPOINTMENT));
-        appointment.setStatus(AppointmentStatus.Pending);
-        return appointmentRepository.save(appointment);
+        appointment.setStatus(AppointmentStatus.Confirmed);
+        Appointment saved = appointmentRepository.save(appointment);
+        notificationService.notifyUser(donor.getUser().getId(), NotificationType.success,
+                "Appointment confirmed", "Your appointment " + saved.getCode() + " is confirmed.",
+                "appointment", saved.getId().toString());
+        return saved;
     }
 
     public Appointment updateAppointment(UUID id, Appointment updates) {

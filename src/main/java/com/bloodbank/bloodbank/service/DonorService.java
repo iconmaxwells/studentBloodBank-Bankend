@@ -70,6 +70,10 @@ public class DonorService {
     }
 
     public Donor createDonor(Donor donor, String email, String password) {
+        return createDonor(donor, email, password, null);
+    }
+
+    public Donor createDonor(Donor donor, String email, String password, String phone) {
         requireManageDonors();
         SystemSettings settings = systemSettingsService.getSettings();
         int age = Period.between(donor.getDateOfBirth(), LocalDate.now()).getYears();
@@ -89,6 +93,7 @@ public class DonorService {
         User user = userRepository.save(User.builder()
                 .name(donor.getFirstName() + " " + donor.getLastName())
                 .email(email)
+                .phone(phone != null && !phone.isBlank() ? phone.trim() : null)
                 .password(passwordEncoder.encode(password))
                 .role(role)
                 .active(true)
@@ -155,11 +160,15 @@ public class DonorService {
             reasons.add("Must wait until " + donor.getNextEligibleDate());
         }
 
+        String role = SecurityUtils.getCurrentUserRole();
+        boolean statusOk = donor.getStatus() == DonorStatus.Eligible
+                || ("admin".equalsIgnoreCase(role) && donor.getStatus() == DonorStatus.Pending_Screening);
+
         return Map.of(
                 "donorId", donor.getId(),
                 "displayCode", donor.getDisplayCode(),
                 "status", donor.getStatus(),
-                "eligible", eligible && donor.getStatus() == DonorStatus.Eligible,
+                "eligible", eligible && statusOk,
                 "nextEligibleDate", donor.getNextEligibleDate() != null ? donor.getNextEligibleDate() : LocalDate.now(),
                 "reasons", reasons
         );

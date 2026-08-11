@@ -46,6 +46,41 @@ public class StaffPortalService {
     private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
+    public Map<String, Object> getProfile() {
+        requireStaff();
+        Staff staff = staffService.getByCurrentUser();
+        return enrichStaffProfile(staff);
+    }
+
+    public Map<String, Object> updateProfile(Map<String, Object> updates) {
+        requireStaff();
+        String email = updates.get("email") != null ? String.valueOf(updates.get("email")) : null;
+        String phone = updates.get("phone") != null ? String.valueOf(updates.get("phone")) : null;
+        Staff staff = staffService.updateCurrentProfile(email, phone);
+        activityLogService.log(ActionType.update, "update_staff_profile",
+                "Staff updated profile", "staff", null, null, null, null, null);
+        return enrichStaffProfile(staff);
+    }
+
+    private Map<String, Object> enrichStaffProfile(Staff staff) {
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("id", staff.getId());
+        profile.put("name", staff.getName());
+        profile.put("email", staff.getEmail());
+        profile.put("phone", staff.getPhone() != null ? staff.getPhone() : staff.getUser().getPhone());
+        profile.put("department", staff.getDepartment());
+        profile.put("shift", staff.getShift());
+        profile.put("status", staff.getStatus());
+        profile.put("joinDate", staff.getJoinDate());
+        profile.put("certifications", staff.getCertifications());
+        if (staff.getStaffRole() != null) {
+            profile.put("staffRole", staff.getStaffRole().getName());
+            profile.put("role", staff.getStaffRole().getName());
+        }
+        return profile;
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Object> getDashboard() {
         requireStaff();
         Staff staff = staffService.getByCurrentUser();

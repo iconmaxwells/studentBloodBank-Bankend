@@ -1,5 +1,6 @@
 package com.bloodbank.bloodbank.service;
 
+import com.bloodbank.bloodbank.dto.request.PayCompensationRequest;
 import com.bloodbank.bloodbank.entity.Hospital;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.RequestStatus;
 import com.bloodbank.bloodbank.exception.ResourceNotFoundException;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class HospitalPortalService {
     private final DeliveryService deliveryService;
     private final InventoryService inventoryService;
     private final NotificationService notificationService;
+    private final HospitalBillingService hospitalBillingService;
 
     public Map<String, Object> getDashboard() {
         Hospital hospital = getCurrentHospital();
@@ -65,6 +68,16 @@ public class HospitalPortalService {
 
     public Map<String, Object> getNotifications(int page, int limit) {
         return notificationService.listNotifications(page, limit);
+    }
+
+    public Map<String, Object> getServiceCharges(int page, int limit, String sort) {
+        Hospital hospital = getCurrentHospital();
+        return hospitalBillingService.listCharges(hospital.getId(), null, null, page, limit, sort);
+    }
+
+    @Transactional
+    public Map<String, Object> payServiceCharge(UUID chargeId, PayCompensationRequest request) {
+        return hospitalBillingService.simulatePayCharge(chargeId, request);
     }
 
     private Hospital getCurrentHospital() {

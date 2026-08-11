@@ -2,7 +2,6 @@ package com.bloodbank.bloodbank.controller;
 
 import com.bloodbank.bloodbank.dto.common.ApiResponse;
 import com.bloodbank.bloodbank.entity.CompensationPayment;
-import com.bloodbank.bloodbank.entity.Donor;
 import com.bloodbank.bloodbank.entity.DonorReward;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.PaymentStatus;
@@ -26,12 +25,12 @@ public class DonorPortalController {
     }
 
     @GetMapping("/profile")
-    public ApiResponse<Donor> getProfile() {
+    public ApiResponse<Map<String, Object>> getProfile() {
         return ApiResponse.ok(donorPortalService.getProfile());
     }
 
     @PatchMapping("/profile")
-    public ApiResponse<Donor> updateProfile(@Valid @RequestBody Donor updates) {
+    public ApiResponse<Map<String, Object>> updateProfile(@RequestBody Map<String, Object> updates) {
         return ApiResponse.ok(donorPortalService.updateProfile(updates));
     }
 

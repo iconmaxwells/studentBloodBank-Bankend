@@ -110,12 +110,17 @@ public class ReportService {
                 .format(format)
                 .status("pending")
                 .build());
-        processJobAsync(job.getId(), request);
-        return job;
+        processJob(job.getId(), request);
+        return reportJobRepository.findById(job.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Report job"));
     }
 
     @Async
     public void processJobAsync(UUID jobId, Map<String, Object> request) {
+        processJob(jobId, request);
+    }
+
+    private void processJob(UUID jobId, Map<String, Object> request) {
         try {
             ReportJob job = reportJobRepository.findById(jobId).orElseThrow();
             String type = job.getType();

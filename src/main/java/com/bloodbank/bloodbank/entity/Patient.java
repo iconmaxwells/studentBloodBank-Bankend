@@ -29,6 +29,9 @@ public class Patient {
     @Column(name = "hospital_id", nullable = false)
     private UUID hospitalId;
 
+    @Column(name = "external_id")
+    private String externalId;
+
     @Column(nullable = false)
     private String name;
 

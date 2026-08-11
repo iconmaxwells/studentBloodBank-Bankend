@@ -34,6 +34,9 @@ public class SystemSettings {
     @Column(name = "donor_compensation_default")
     private Double donorCompensationDefault = 75.0;
 
+    @Column(name = "hospital_service_charge_default")
+    private Double hospitalServiceChargeDefault = 500.0;
+
     @Column(name = "min_donation_interval_days")
     private Integer minDonationIntervalDays = 90;
 

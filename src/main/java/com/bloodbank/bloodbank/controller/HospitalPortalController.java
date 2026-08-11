@@ -1,6 +1,7 @@
 package com.bloodbank.bloodbank.controller;
 
 import com.bloodbank.bloodbank.dto.common.ApiResponse;
+import com.bloodbank.bloodbank.dto.request.PayCompensationRequest;
 import com.bloodbank.bloodbank.entity.Hospital;
 import com.bloodbank.bloodbank.service.HospitalPortalService;
 import jakarta.validation.Valid;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/hospital")
@@ -60,5 +62,20 @@ public class HospitalPortalController {
     @GetMapping("/inventory-availability")
     public ApiResponse<Map<String, Object>> getInventoryAvailability() {
         return ApiResponse.ok(hospitalPortalService.getInventoryPreview());
+    }
+
+    @GetMapping("/service-charges")
+    public ApiResponse<?> getServiceCharges(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) String sort) {
+        return ControllerUtils.paged(hospitalPortalService.getServiceCharges(page, limit, sort));
+    }
+
+    @PostMapping("/service-charges/{id}/pay")
+    public ApiResponse<Map<String, Object>> payServiceCharge(
+            @PathVariable UUID id,
+            @RequestBody(required = false) PayCompensationRequest request) {
+        return ApiResponse.ok(hospitalPortalService.payServiceCharge(id, request));
     }
 }

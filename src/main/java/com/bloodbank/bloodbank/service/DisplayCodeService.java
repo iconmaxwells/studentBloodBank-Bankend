@@ -36,6 +36,8 @@ public class DisplayCodeService {
             case APPOINTMENT -> "APT" + String.format("%03d", value);
             case TRANSACTION -> "TXN" + String.format("%03d", value);
             case BLOOD_UNIT -> "UNIT" + String.format("%03d", value);
+            case SUPPLY_REQUEST -> "SR" + String.format("%03d", value);
+            case SERVICE_CHARGE -> "INV" + String.format("%03d", value);
         };
     }
 

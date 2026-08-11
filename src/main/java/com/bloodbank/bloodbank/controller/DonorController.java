@@ -41,7 +41,8 @@ public class DonorController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<Donor>> create(@Valid @RequestBody DonorCreateRequest request) {
-        Donor created = donorService.createDonor(request.toDonor(), request.getEmail(), request.getPassword());
+        Donor created = donorService.createDonor(
+                request.toDonor(), request.getEmail(), request.getPassword(), request.getPhone());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(created));
     }
 

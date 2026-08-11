@@ -207,6 +207,8 @@ public class AuthenticationService {
                 staffRoleName = staff.getStaffRole().getName();
                 staff.getStaffRole().getPermissions().forEach(p -> permissions.put(p.getName(), true));
             }
+            permissions.put("canApproveRequests", true);
+            permissions.put("canRejectRequests", true);
         }
         if ("admin".equalsIgnoreCase(user.getRole().getName())) {
             permissions.put("canApproveRequests", true);

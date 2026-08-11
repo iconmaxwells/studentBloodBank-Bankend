@@ -24,6 +24,7 @@ public class SystemSettingsService {
         if (updates.getContactPhone() != null) current.setContactPhone(updates.getContactPhone());
         if (updates.getAddress() != null) current.setAddress(updates.getAddress());
         if (updates.getDonorCompensationDefault() != null) current.setDonorCompensationDefault(updates.getDonorCompensationDefault());
+        if (updates.getHospitalServiceChargeDefault() != null) current.setHospitalServiceChargeDefault(updates.getHospitalServiceChargeDefault());
         if (updates.getMinDonationIntervalDays() != null) current.setMinDonationIntervalDays(updates.getMinDonationIntervalDays());
         if (updates.getMinAge() != null) current.setMinAge(updates.getMinAge());
         if (updates.getMaxAge() != null) current.setMaxAge(updates.getMaxAge());
@@ -41,6 +42,7 @@ public class SystemSettingsService {
                 .contactPhone("+233000000000")
                 .address("Accra, Ghana")
                 .donorCompensationDefault(75.0)
+                .hospitalServiceChargeDefault(500.0)
                 .minDonationIntervalDays(90)
                 .minAge(18)
                 .maxAge(65)
@@ -50,6 +52,7 @@ public class SystemSettingsService {
 
     private SystemSettings applyDefaults(SystemSettings settings) {
         if (settings.getDonorCompensationDefault() == null) settings.setDonorCompensationDefault(75.0);
+        if (settings.getHospitalServiceChargeDefault() == null) settings.setHospitalServiceChargeDefault(500.0);
         if (settings.getMinDonationIntervalDays() == null) settings.setMinDonationIntervalDays(90);
         if (settings.getMinAge() == null) settings.setMinAge(18);
         if (settings.getMaxAge() == null) settings.setMaxAge(65);

@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -56,12 +57,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private UserPrincipal buildPrincipal(User user) {
         Map<String, Boolean> permissions = new LinkedHashMap<>();
         String staffRoleName = null;
-        if ("staff".equalsIgnoreCase(user.getRole().getName()) || "specialist".equalsIgnoreCase(user.getRole().getName())) {
+        String roleName = user.getRole().getName();
+        if ("admin".equalsIgnoreCase(roleName)) {
+            grantAllStaffPermissions(permissions);
+        } else if ("staff".equalsIgnoreCase(roleName) || "specialist".equalsIgnoreCase(roleName)) {
             Staff staff = staffRepository.findByUserId(user.getId()).orElse(null);
             if (staff != null && staff.getStaffRole() != null) {
                 staffRoleName = staff.getStaffRole().getName();
                 staff.getStaffRole().getPermissions().forEach(p -> permissions.put(p.getName(), true));
             }
+            // All staff portal users may approve/reject hospital requests
+            permissions.put("canApproveRequests", true);
+            permissions.put("canRejectRequests", true);
         }
         return UserPrincipal.builder()
                 .id(user.getId())
@@ -70,6 +77,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 .staffRole(staffRoleName)
                 .permissions(permissions)
                 .build();
+    }
+
+    private void grantAllStaffPermissions(Map<String, Boolean> permissions) {
+        for (String name : List.of(
+                "canApproveRequests", "canRejectRequests", "canManageInventory",
+                "canManageDonors", "canConductWithdrawals", "canViewReports", "canManageStaff")) {
+            permissions.put(name, true);
+        }
     }
 
     private String extractTokenFromRequest(HttpServletRequest request) {

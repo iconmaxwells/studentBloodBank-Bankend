@@ -36,9 +36,8 @@ public class StaffService {
     public Map<String, Object> listStaff(StaffStatus status, int page, int limit, String sort) {
         requireAdmin();
         PageRequest pageable = PageUtils.toPageRequest(page, limit, sort);
-        Page<Staff> result = status != null
-                ? staffRepository.findByStatus(status, pageable)
-                : staffRepository.findAll(pageable);
+        StaffStatus effectiveStatus = status != null ? status : StaffStatus.Active;
+        Page<Staff> result = staffRepository.findByStatus(effectiveStatus, pageable);
         return Map.of("items", result.getContent(), "meta", PageUtils.toMeta(result, page, limit));
     }
 
@@ -127,6 +126,20 @@ public class StaffService {
         UUID userId = SecurityUtils.getCurrentUserId();
         return staffRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff"));
+    }
+
+    public Staff updateCurrentProfile(String email, String phone) {
+        Staff staff = getByCurrentUser();
+        if (email != null && !email.isBlank()) {
+            staff.setEmail(email.trim());
+            staff.getUser().setEmail(email.trim());
+        }
+        if (phone != null && !phone.isBlank()) {
+            staff.setPhone(phone.trim());
+            staff.getUser().setPhone(phone.trim());
+        }
+        userRepository.save(staff.getUser());
+        return staffRepository.save(staff);
     }
 
     public Map<String, Boolean> getCurrentUserPermissions() {

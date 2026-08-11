@@ -99,12 +99,23 @@ public class CollectionService {
             throw new BusinessRuleException("DONOR_NOT_ELIGIBLE", "Donor is not eligible to donate");
         }
 
+        if (donor.getStatus() == DonorStatus.Pending_Screening
+                && "admin".equalsIgnoreCase(SecurityUtils.getCurrentUserRole())) {
+            donor.setStatus(DonorStatus.Eligible);
+            donorRepository.save(donor);
+        }
+
         collection.setDisplayCode(displayCodeService.nextCode(EntityType.COLLECTION));
         collection.setStaffId(SecurityUtils.getCurrentUserId());
         if (collection.getCollectionDate() == null) collection.setCollectionDate(LocalDate.now());
         if (collection.getCollectionTime() == null) collection.setCollectionTime(LocalTime.now());
         if (collection.getBloodGroup() == null) {
             collection.setBloodGroup(donor.getBloodGroup());
+        }
+        if (collection.getStorageLocation() == null || collection.getStorageLocation().isBlank()) {
+            throw new BusinessRuleException(
+                    "STORAGE_LOCATION_REQUIRED",
+                    "Refrigerator/storage location is required to complete collection");
         }
         collection.setStatus(CollectionStatus.Collected);
         collection.setTestResult(TestOverallStatus.Pending);

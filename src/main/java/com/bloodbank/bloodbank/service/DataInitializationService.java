@@ -3,6 +3,9 @@ package com.bloodbank.bloodbank.service;
 import com.bloodbank.bloodbank.entity.*;
 import com.bloodbank.bloodbank.entity.enums.BloodGroup;
 import com.bloodbank.bloodbank.entity.enums.BloodProductType;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.EntityType;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.SupplyRequestStatus;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.Urgency;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.UnitStatus;
 import com.bloodbank.bloodbank.repository.*;
 import com.bloodbank.bloodbank.util.BloodBankUtils;
@@ -32,6 +35,7 @@ public class DataInitializationService implements CommandLineRunner {
     private final SystemSettingsRepository systemSettingsRepository;
     private final DonorRewardRepository donorRewardRepository;
     private final BloodUnitRepository bloodUnitRepository;
+    private final SupplyRequestRepository supplyRequestRepository;
     private final PasswordEncoder passwordEncoder;
     private final DisplayCodeService displayCodeService;
     private final DonorService donorService;
@@ -43,9 +47,9 @@ public class DataInitializationService implements CommandLineRunner {
         initializePermissions();
         initializeRoles();
         initializeStaffRoles();
+        syncStaffRolePermissions();
         initializeSystemSettings();
         initializeBloodBanks();
-        initializeDemoInventory();
         initializeDemoUsers();
         int backfilled = donorService.backfillMissingBloodGroups();
         if (backfilled > 0) {
@@ -79,14 +83,17 @@ public class DataInitializationService implements CommandLineRunner {
         }
     }
 
-    private void initializeStaffRoles() {
-        Map<String, List<String>> matrix = Map.of(
+    private Map<String, List<String>> staffRolePermissionMatrix() {
+        return Map.of(
                 "Admin", List.of("canApproveRequests", "canRejectRequests", "canManageInventory", "canManageDonors", "canConductWithdrawals", "canViewReports", "canManageStaff"),
                 "Senior Staff", List.of("canApproveRequests", "canRejectRequests", "canManageInventory", "canManageDonors", "canConductWithdrawals", "canViewReports"),
-                "Junior Staff", List.of("canManageInventory", "canManageDonors", "canConductWithdrawals"),
-                "Technician", List.of("canConductWithdrawals")
+                "Junior Staff", List.of("canApproveRequests", "canRejectRequests", "canManageInventory", "canManageDonors", "canConductWithdrawals"),
+                "Technician", List.of("canApproveRequests", "canRejectRequests", "canConductWithdrawals")
         );
-        for (var entry : matrix.entrySet()) {
+    }
+
+    private void initializeStaffRoles() {
+        for (var entry : staffRolePermissionMatrix().entrySet()) {
             if (staffRoleRepository.findByName(entry.getKey()).isEmpty()) {
                 Set<Permission> perms = new HashSet<>();
                 for (String p : entry.getValue()) {
@@ -97,6 +104,20 @@ public class DataInitializationService implements CommandLineRunner {
         }
     }
 
+    private void syncStaffRolePermissions() {
+        for (var entry : staffRolePermissionMatrix().entrySet()) {
+            staffRoleRepository.findByName(entry.getKey()).ifPresent(role -> {
+                Set<Permission> perms = new HashSet<>();
+                for (String p : entry.getValue()) {
+                    permissionRepository.findByName(p).ifPresent(perms::add);
+                }
+                role.setPermissions(perms);
+                staffRoleRepository.save(role);
+            });
+        }
+        log.info("Synchronized staff role permissions");
+    }
+
     private void initializeSystemSettings() {
         if (systemSettingsRepository.count() == 0) {
             systemSettingsRepository.save(SystemSettings.builder()
@@ -105,6 +126,7 @@ public class DataInitializationService implements CommandLineRunner {
                     .contactPhone("+233000000000")
                     .address("Accra, Ghana")
                     .donorCompensationDefault(75.0)
+                    .hospitalServiceChargeDefault(500.0)
                     .minDonationIntervalDays(90)
                     .minAge(18)
                     .maxAge(65)
@@ -126,6 +148,30 @@ public class DataInitializationService implements CommandLineRunner {
                     .email("main@bloodbank.com")
                     .operatingHours("Mon-Sat 8:00-18:00")
                     .availableServices(List.of("Donation", "Testing", "Storage", "Emergency"))
+                    .build());
+            bloodBankRepository.save(BloodBank.builder()
+                    .displayCode("BB002")
+                    .name("Regional Blood Center - Kumasi")
+                    .address("45 Hospital Avenue")
+                    .location("Kumasi")
+                    .latitude(6.6885)
+                    .longitude(-1.6244)
+                    .phone("+233244567890")
+                    .email("kumasi@bloodbank.com")
+                    .operatingHours("Mon-Fri 7:00-19:00")
+                    .availableServices(List.of("Donation", "Storage", "Emergency Supply"))
+                    .build());
+            bloodBankRepository.save(BloodBank.builder()
+                    .displayCode("BB003")
+                    .name("National Blood Bank Network - Tamale")
+                    .address("12 Civic Center Road")
+                    .location("Tamale")
+                    .latitude(9.4034)
+                    .longitude(-0.8424)
+                    .phone("+233207654321")
+                    .email("tamale@bloodbank.com")
+                    .operatingHours("24/7 Emergency")
+                    .availableServices(List.of("Emergency", "Inter-Bank Transfer", "Storage"))
                     .build());
         }
     }
@@ -157,6 +203,46 @@ public class DataInitializationService implements CommandLineRunner {
             }
         }
         log.info("Seeded {} demo blood unit(s) for hospital request fulfillment", seeded);
+    }
+
+    private void initializeDemoSupplyRequests() {
+        if (supplyRequestRepository.count() > 0) {
+            return;
+        }
+        var suppliers = bloodBankRepository.findAll();
+        if (suppliers.isEmpty()) {
+            return;
+        }
+        BloodBank supplier = suppliers.size() > 1 ? suppliers.get(1) : suppliers.get(0);
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Map<String, Object>> followUp = new ArrayList<>();
+        followUp.add(Map.of(
+                "timestamp", java.time.LocalDateTime.now().minusDays(2).toString(),
+                "authorName", "Staff Member",
+                "note", "Request submitted to " + supplier.getName(),
+                "status", "Submitted"));
+        followUp.add(Map.of(
+                "timestamp", java.time.LocalDateTime.now().minusDays(1).toString(),
+                "authorName", supplier.getName(),
+                "note", "Request acknowledged. Preparing 15 units for dispatch.",
+                "status", "Acknowledged"));
+        supplyRequestRepository.save(SupplyRequest.builder()
+                .displayCode(displayCodeService.nextCode(EntityType.SUPPLY_REQUEST))
+                .bloodGroup(BloodGroup.O_POSITIVE)
+                .bloodProductType(BloodProductType.WB)
+                .unitsRequested(15)
+                .urgency(Urgency.Critical)
+                .status(SupplyRequestStatus.Acknowledged)
+                .supplierBloodBankId(supplier.getId())
+                .supplierBloodBankName(supplier.getName())
+                .requiredBy(today.plusDays(1))
+                .reason("Critical shortage of O+ whole blood due to increased hospital demand.")
+                .currentUnits(8)
+                .capacity(100)
+                .requestedByName("Staff Member")
+                .followUpNotes(followUp)
+                .build());
+        log.info("Seeded demo inter-bank supply request");
     }
 
     private void initializeDemoUsers() {

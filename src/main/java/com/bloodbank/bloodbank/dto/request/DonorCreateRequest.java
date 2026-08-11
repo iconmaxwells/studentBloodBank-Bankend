@@ -27,6 +27,8 @@ public class DonorCreateRequest {
     @NotBlank
     private String lastName;
 
+    private String phone;
+
     @NotNull
     private LocalDate dateOfBirth;
 

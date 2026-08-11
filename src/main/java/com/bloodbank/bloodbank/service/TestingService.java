@@ -84,20 +84,25 @@ public class TestingService {
     public TestingRecord updateResults(UUID id, List<Map<String, Object>> tests) {
         requireTestingAccess();
         TestingRecord record = getById(id);
-        if (record.getOverallStatus() != TestOverallStatus.Pending) {
+        if (record.getOverallStatus() == TestOverallStatus.Passed
+                || record.getOverallStatus() == TestOverallStatus.Failed) {
             throw new BusinessRuleException("TEST_COMPLETED", "Test is already finalized");
         }
         record.setTests(tests);
+        if (record.getOverallStatus() == TestOverallStatus.Pending) {
+            record.setOverallStatus(TestOverallStatus.Completed);
+        }
         return testingRecordRepository.save(record);
     }
 
     public TestingRecord completeTest(UUID id, TestOverallStatus overallStatus) {
         requireTestingAccess();
-        if (overallStatus == TestOverallStatus.Pending) {
+        if (overallStatus == TestOverallStatus.Pending || overallStatus == TestOverallStatus.Completed) {
             throw new BusinessRuleException("INVALID_STATUS", "Overall status must be Passed or Failed");
         }
         TestingRecord record = getById(id);
-        if (record.getOverallStatus() != TestOverallStatus.Pending) {
+        if (record.getOverallStatus() == TestOverallStatus.Passed
+                || record.getOverallStatus() == TestOverallStatus.Failed) {
             throw new BusinessRuleException("TEST_COMPLETED", "Test is already finalized");
         }
 

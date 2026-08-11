@@ -14,7 +14,7 @@ public final class DomainEnums {
 
     public enum CollectionStatus { In_Progress, Collected, Testing, Tested, Stored, Failed }
 
-    public enum TestOverallStatus { Pending, Passed, Failed }
+    public enum TestOverallStatus { Pending, Completed, Passed, Failed }
 
     public enum Gender { Male, Female, Other }
 
@@ -62,5 +62,7 @@ public final class DomainEnums {
 
     public enum TestItemStatus { Complete, In_Progress }
 
-    public enum EntityType { DONOR, HOSPITAL, REQUEST, COLLECTION, BLOOD_UNIT, APPOINTMENT, TRANSACTION }
+    public enum SupplyRequestStatus { Submitted, Acknowledged, In_Transit, Delivered, Cancelled, Rejected }
+
+    public enum EntityType { DONOR, HOSPITAL, REQUEST, COLLECTION, BLOOD_UNIT, APPOINTMENT, TRANSACTION, SUPPLY_REQUEST, SERVICE_CHARGE }
 }
