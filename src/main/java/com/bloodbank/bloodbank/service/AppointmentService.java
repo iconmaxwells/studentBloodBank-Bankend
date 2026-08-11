@@ -2,7 +2,6 @@ package com.bloodbank.bloodbank.service;
 
 import com.bloodbank.bloodbank.entity.*;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.*;
-import com.bloodbank.bloodbank.entity.enums.DomainEnums.EntityType;
 import com.bloodbank.bloodbank.exception.ApiException;
 import com.bloodbank.bloodbank.exception.BusinessRuleException;
 import com.bloodbank.bloodbank.exception.ResourceNotFoundException;
@@ -105,6 +104,30 @@ public class AppointmentService {
         return appointmentRepository.save(appointment);
     }
 
+    public Appointment checkInAppointment(UUID appointmentId) {
+        requireScreeningStaff();
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Appointment"));
+        if (appointment.getStatus() == AppointmentStatus.Completed
+                || appointment.getStatus() == AppointmentStatus.Cancelled) {
+            throw new BusinessRuleException("INVALID_STATUS", "Appointment cannot be checked in");
+        }
+        appointment.setStatus(AppointmentStatus.Checked_In);
+        return appointmentRepository.save(appointment);
+    }
+
+    public Appointment markAppointmentInScreening(UUID appointmentId) {
+        requireScreeningStaff();
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Appointment"));
+        if (appointment.getStatus() == AppointmentStatus.Completed
+                || appointment.getStatus() == AppointmentStatus.Cancelled) {
+            throw new BusinessRuleException("INVALID_STATUS", "Appointment is closed");
+        }
+        appointment.setStatus(AppointmentStatus.In_Screening);
+        return appointmentRepository.save(appointment);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> listAppointmentRequests(AppointmentRequestStatus status, int page, int limit) {
         requireStaff();
@@ -181,7 +204,8 @@ public class AppointmentService {
             if (!appointment.getDonorId().equals(donor.getId())) {
                 throw new ApiException("FORBIDDEN", "Access denied", HttpStatus.FORBIDDEN);
             }
-        } else if (!isStaffOrAdmin(SecurityUtils.getCurrentUserRole())) {
+        } else if (!isStaffOrAdmin(SecurityUtils.getCurrentUserRole())
+                && !"specialist".equalsIgnoreCase(SecurityUtils.getCurrentUserRole())) {
             throw new ApiException("FORBIDDEN", "Access denied", HttpStatus.FORBIDDEN);
         }
     }

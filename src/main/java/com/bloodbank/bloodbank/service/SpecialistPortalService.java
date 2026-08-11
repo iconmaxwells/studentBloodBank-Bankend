@@ -3,7 +3,7 @@ package com.bloodbank.bloodbank.service;
 import com.bloodbank.bloodbank.entity.Appointment;
 import com.bloodbank.bloodbank.entity.Donor;
 import com.bloodbank.bloodbank.entity.ScreeningRecord;
-import com.bloodbank.bloodbank.entity.Staff;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.AppointmentStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.ScreeningStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.TestOverallStatus;
@@ -11,7 +11,6 @@ import com.bloodbank.bloodbank.exception.ApiException;
 import com.bloodbank.bloodbank.repository.AppointmentRepository;
 import com.bloodbank.bloodbank.repository.DonorRepository;
 import com.bloodbank.bloodbank.repository.ScreeningRecordRepository;
-import com.bloodbank.bloodbank.repository.StaffRepository;
 import com.bloodbank.bloodbank.repository.TestingRecordRepository;
 import com.bloodbank.bloodbank.util.PageUtils;
 import com.bloodbank.bloodbank.util.SecurityUtils;
@@ -36,9 +35,10 @@ public class SpecialistPortalService {
     private final TestingRecordRepository testingRecordRepository;
     private final AppointmentRepository appointmentRepository;
     private final DonorRepository donorRepository;
-    private final StaffRepository staffRepository;
     private final ScreeningService screeningService;
     private final TestingService testingService;
+    private final AppointmentService appointmentService;
+    private final ScreeningRecordEnricher screeningRecordEnricher;
 
     public Map<String, Object> getDashboard() {
         requireSpecialist();
@@ -94,7 +94,7 @@ public class SpecialistPortalService {
         var pageable = PageUtils.toPageRequest(page, limit, "-createdAt");
         var result = screeningRecordRepository.findAll(pageable);
         List<Map<String, Object>> items = result.getContent().stream()
-                .map(this::enrichScreeningRecord)
+                .map(screeningRecordEnricher::enrich)
                 .toList();
         return Map.of("items", items, "meta", PageUtils.toMeta(result, page, limit));
     }
@@ -112,70 +112,36 @@ public class SpecialistPortalService {
         row.put("donorUuid", appointment.getDonorId());
 
         donorRepository.findById(appointment.getDonorId()).ifPresent(donor -> enrichDonorFields(row, donor));
+        row.put("displayStatus", resolveScheduleDisplayStatus(appointment));
+        screeningRecordRepository.findFirstByDonorIdAndStatusOrderByUpdatedAtDesc(
+                appointment.getDonorId(), ScreeningStatus.In_Progress
+        ).ifPresent(session -> row.put("activeSessionId", session.getId()));
         return row;
     }
 
-    private Map<String, Object> enrichScreeningRecord(ScreeningRecord record) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", record.getId());
-        row.put("donorId", record.getDonorId());
-        row.put("status", record.getStatus());
-        row.put("screeningDate", record.getScreeningDate());
-        row.put("screeningTime", record.getScreeningTime());
-        row.put("personalInfo", record.getPersonalInfo());
-        row.put("contactInfo", record.getContactInfo());
-        row.put("identification", record.getIdentification());
-        row.put("physicalInfo", record.getPhysicalInfo());
-        row.put("medicalHistory", record.getMedicalHistory());
-        row.put("lifestyle", record.getLifestyle());
-        row.put("vitals", record.getVitals());
-        row.put("eligibilityResult", record.getEligibilityResult());
-        row.put("notes", record.getNotes());
-        row.put("createdAt", record.getCreatedAt());
-        row.put("updatedAt", record.getUpdatedAt());
-
-        if (record.getBloodGroup() != null) {
-            row.put("bloodGroup", record.getBloodGroup().getValue());
+    private String resolveScheduleDisplayStatus(Appointment appointment) {
+        AppointmentStatus status = appointment.getStatus();
+        if (status == AppointmentStatus.Completed) {
+            return "Completed";
         }
-
-        donorRepository.findById(record.getDonorId()).ifPresent(donor -> {
-            row.put("donorDisplayCode", donor.getDisplayCode());
-            row.put("donorName", donor.getFirstName() + " " + donor.getLastName());
-            if (donor.getUser() != null) {
-                row.put("donorPhone", donor.getUser().getPhone());
-                row.put("donorEmail", donor.getUser().getEmail());
-            }
-            if (!row.containsKey("bloodGroup") && donor.getBloodGroup() != null) {
-                row.put("bloodGroup", donor.getBloodGroup().getValue());
-            }
-        });
-
-        if (record.getStaffId() != null) {
-            staffRepository.findByUserId(record.getStaffId()).ifPresent(staff ->
-                    row.put("staffName", staff.getName()));
+        if (status == AppointmentStatus.Cancelled) {
+            return "Cancelled";
         }
-        if (record.getSpecialistId() != null) {
-            staffRepository.findByUserId(record.getSpecialistId()).ifPresent(staff ->
-                    row.put("screenedBy", staff.getName()));
+        if (status == AppointmentStatus.In_Screening) {
+            return "In Screening";
         }
-
-        if (record.getVitals() != null) {
-            copyIfPresent(record.getVitals(), row, "hemoglobin", "hemoglobinLevel");
-            copyIfPresent(record.getVitals(), row, "bloodPressure", "bp");
-            copyIfPresent(record.getVitals(), row, "pulse", "heartRate");
-            copyIfPresent(record.getVitals(), row, "temperature", "temp");
+        if (status == AppointmentStatus.Checked_In) {
+            return "Checked In";
         }
-        if (record.getPhysicalInfo() != null) {
-            copyIfPresent(record.getPhysicalInfo(), row, "weight");
-            copyIfPresent(record.getPhysicalInfo(), row, "gender");
+        if (screeningRecordRepository.findFirstByDonorIdAndStatusOrderByUpdatedAtDesc(
+                appointment.getDonorId(), ScreeningStatus.In_Progress).isPresent()) {
+            return "In Screening";
         }
-        if (record.getMedicalHistory() != null) {
-            copyIfPresent(record.getMedicalHistory(), row, "allergies");
-            copyIfPresent(record.getMedicalHistory(), row, "medications", "currentMedications");
-            copyIfPresent(record.getMedicalHistory(), row, "medicalHistory", "conditions");
+        if (status == AppointmentStatus.Confirmed || status == AppointmentStatus.Scheduled
+                || status == AppointmentStatus.Pending) {
+            return "Scheduled";
         }
-
-        return row;
+        return status != null ? status.name().replace('_', ' ') : "Scheduled";
     }
 
     private void enrichDonorFields(Map<String, Object> row, Donor donor) {
@@ -218,6 +184,37 @@ public class SpecialistPortalService {
     public ScreeningRecord updateSession(UUID id, ScreeningRecord updates) {
         requireSpecialist();
         return screeningService.updateScreening(id, updates);
+    }
+
+    @Transactional
+    public Map<String, Object> checkInSchedule(UUID appointmentId) {
+        requireSpecialist();
+        Appointment appointment = appointmentService.checkInAppointment(appointmentId);
+        return enrichAppointment(appointment);
+    }
+
+    @Transactional
+    public Map<String, Object> startScheduleScreening(UUID appointmentId) {
+        requireSpecialist();
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ApiException("NOT_FOUND", "Appointment not found", HttpStatus.NOT_FOUND));
+        appointmentService.markAppointmentInScreening(appointmentId);
+
+        ScreeningRecord session = screeningRecordRepository
+                .findFirstByDonorIdAndStatusOrderByUpdatedAtDesc(appointment.getDonorId(), ScreeningStatus.In_Progress)
+                .orElseGet(() -> screeningService.createScreening(
+                        ScreeningRecord.builder().donorId(appointment.getDonorId()).build()));
+
+        UUID specialistUserId = SecurityUtils.getCurrentUserId();
+        if (session.getSpecialistId() == null) {
+            session.setSpecialistId(specialistUserId);
+            session = screeningRecordRepository.save(session);
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("appointment", enrichAppointment(appointmentRepository.findById(appointmentId).orElse(appointment)));
+        response.put("session", session);
+        return response;
     }
 
     @Transactional

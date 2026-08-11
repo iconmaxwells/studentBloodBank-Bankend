@@ -2,16 +2,20 @@ package com.bloodbank.bloodbank.service;
 
 import com.bloodbank.bloodbank.entity.Collection;
 import com.bloodbank.bloodbank.entity.Donor;
+import com.bloodbank.bloodbank.entity.ScreeningRecord;
 import com.bloodbank.bloodbank.entity.TestingRecord;
+import com.bloodbank.bloodbank.entity.enums.BloodGroup;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.ActionType;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.CollectionStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.ScreeningStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.TestOverallStatus;
 import com.bloodbank.bloodbank.exception.ApiException;
 import com.bloodbank.bloodbank.exception.BusinessRuleException;
 import com.bloodbank.bloodbank.exception.ResourceNotFoundException;
 import com.bloodbank.bloodbank.repository.CollectionRepository;
 import com.bloodbank.bloodbank.repository.DonorRepository;
+import com.bloodbank.bloodbank.repository.ScreeningRecordRepository;
 import com.bloodbank.bloodbank.repository.TestingRecordRepository;
 import com.bloodbank.bloodbank.util.BloodBankUtils;
 import com.bloodbank.bloodbank.util.PageUtils;
@@ -24,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,9 +38,16 @@ import java.util.UUID;
 @Transactional
 public class TestingService {
 
+    private static final EnumSet<ScreeningStatus> SCREENING_WITH_LAB_RESULTS = EnumSet.of(
+            ScreeningStatus.Completed,
+            ScreeningStatus.Failed,
+            ScreeningStatus.Deferred
+    );
+
     private final TestingRecordRepository testingRecordRepository;
     private final CollectionRepository collectionRepository;
     private final DonorRepository donorRepository;
+    private final ScreeningRecordRepository screeningRecordRepository;
     private final InventoryService inventoryService;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
@@ -64,21 +76,72 @@ public class TestingService {
         if (testingRecordRepository.findByCollectionId(collectionId).isPresent()) {
             throw new BusinessRuleException("TEST_EXISTS", "Testing record already exists for this collection");
         }
+        return createTestForCollection(collection, SecurityUtils.getCurrentUserId());
+    }
+
+    public TestingRecord createTestForCollection(Collection collection, UUID technicianId) {
         collection.setStatus(CollectionStatus.Testing);
         collectionRepository.save(collection);
 
+        List<Map<String, Object>> tests = resolveTestsForDonor(collection.getDonorId(), collection.getBloodGroup());
+        TestOverallStatus initialStatus = BloodBankUtils.isInfectiousPanelComplete(tests)
+                ? TestOverallStatus.Completed
+                : TestOverallStatus.Pending;
+
         TestingRecord record = TestingRecord.builder()
-                .collectionId(collectionId)
+                .collectionId(collection.getId())
                 .donorId(collection.getDonorId())
-                .technicianId(SecurityUtils.getCurrentUserId())
+                .technicianId(technicianId)
                 .testDate(LocalDate.now())
-                .tests(BloodBankUtils.defaultTestPanel())
-                .overallStatus(TestOverallStatus.Pending)
+                .tests(tests)
+                .overallStatus(initialStatus)
                 .build();
         TestingRecord saved = testingRecordRepository.save(record);
         activityLogService.log(ActionType.testing, "create_test", "Created test for collection",
-                "testing", null, collection.getDonorId(), null, collectionId, null);
+                "testing", null, collection.getDonorId(), null, collection.getId(), null);
+        if (initialStatus == TestOverallStatus.Completed) {
+            notifyLabResultsReady(collection);
+        }
         return saved;
+    }
+
+    public void syncLabTestsFromScreening(ScreeningRecord screening) {
+        if (screening.getVitals() == null || !BloodBankUtils.hasScreeningLabResults(screening.getVitals())) {
+            return;
+        }
+
+        UUID donorId = screening.getDonorId();
+        String bloodGroupLabel = resolveBloodGroupLabel(screening.getBloodGroup());
+        List<Map<String, Object>> tests = BloodBankUtils.buildTestPanelFromScreening(
+                screening.getVitals(), bloodGroupLabel);
+
+        List<TestingRecord> openRecords = testingRecordRepository.findByDonorIdAndOverallStatusIn(
+                donorId, EnumSet.of(TestOverallStatus.Pending, TestOverallStatus.Completed));
+        for (TestingRecord record : openRecords) {
+            record.setTests(tests);
+            record.setOverallStatus(TestOverallStatus.Completed);
+            testingRecordRepository.save(record);
+            collectionRepository.findById(record.getCollectionId()).ifPresent(this::notifyLabResultsReady);
+        }
+
+        collectionRepository.findByDonorId(donorId, PageRequest.of(0, 20)).getContent().stream()
+                .filter(collection -> collection.getStatus() == CollectionStatus.Collected
+                        || collection.getStatus() == CollectionStatus.Testing)
+                .filter(collection -> testingRecordRepository.findByCollectionId(collection.getId()).isEmpty())
+                .forEach(collection -> createTestForCollection(collection, screening.getSpecialistId() != null
+                        ? screening.getSpecialistId()
+                        : screening.getStaffId()));
+    }
+
+    public void ensureLabTestForCollection(Collection collection) {
+        if (testingRecordRepository.findByCollectionId(collection.getId()).isPresent()) {
+            return;
+        }
+        screeningRecordRepository.findFirstByDonorIdOrderByUpdatedAtDesc(collection.getDonorId())
+                .filter(screening -> SCREENING_WITH_LAB_RESULTS.contains(screening.getStatus()))
+                .filter(screening -> screening.getVitals() != null
+                        && BloodBankUtils.hasScreeningLabResults(screening.getVitals()))
+                .ifPresent(screening -> createTestForCollection(collection, SecurityUtils.getCurrentUserId()));
     }
 
     public TestingRecord updateResults(UUID id, List<Map<String, Object>> tests) {
@@ -113,9 +176,10 @@ public class TestingService {
 
         if (overallStatus == TestOverallStatus.Passed) {
             collection.setStatus(CollectionStatus.Stored);
-            inventoryService.createBloodUnitFromCollection(collection);
+            inventoryService.finalizeBloodUnitAfterTest(collection, true);
         } else {
             collection.setStatus(CollectionStatus.Failed);
+            inventoryService.finalizeBloodUnitAfterTest(collection, false);
             deferDonorAfterFailedTest(collection.getDonorId());
             notificationService.notifyStaff("Failed test result",
                     "Collection " + collection.getDisplayCode() + " failed infectious disease screening.",
@@ -128,6 +192,30 @@ public class TestingService {
                 "Test completed with status: " + overallStatus,
                 "testing", null, collection.getDonorId(), null, collection.getId(), null);
         return saved;
+    }
+
+    private List<Map<String, Object>> resolveTestsForDonor(UUID donorId, BloodGroup collectionBloodGroup) {
+        return screeningRecordRepository.findFirstByDonorIdOrderByUpdatedAtDesc(donorId)
+                .filter(screening -> SCREENING_WITH_LAB_RESULTS.contains(screening.getStatus()))
+                .filter(screening -> screening.getVitals() != null
+                        && BloodBankUtils.hasScreeningLabResults(screening.getVitals()))
+                .map(screening -> {
+                    String bloodGroup = resolveBloodGroupLabel(
+                            collectionBloodGroup != null ? collectionBloodGroup : screening.getBloodGroup());
+                    return BloodBankUtils.buildTestPanelFromScreening(screening.getVitals(), bloodGroup);
+                })
+                .orElseGet(BloodBankUtils::defaultTestPanel);
+    }
+
+    private String resolveBloodGroupLabel(BloodGroup bloodGroup) {
+        return bloodGroup != null ? bloodGroup.getValue() : "";
+    }
+
+    private void notifyLabResultsReady(Collection collection) {
+        notificationService.notifyStaff("Lab results ready for review",
+                "Specialist screening results are available for collection "
+                        + collection.getDisplayCode() + ". Approve or reject the sample.",
+                "testing", collection.getId().toString());
     }
 
     private void deferDonorAfterFailedTest(UUID donorId) {

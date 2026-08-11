@@ -4,12 +4,14 @@ import com.bloodbank.bloodbank.entity.Donor;
 import com.bloodbank.bloodbank.entity.ScreeningRecord;
 import com.bloodbank.bloodbank.entity.enums.BloodGroup;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.ActionType;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.AppointmentStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.EligibilityResult;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.ScreeningStatus;
 import com.bloodbank.bloodbank.exception.ApiException;
 import com.bloodbank.bloodbank.exception.BusinessRuleException;
 import com.bloodbank.bloodbank.exception.ResourceNotFoundException;
+import com.bloodbank.bloodbank.repository.AppointmentRepository;
 import com.bloodbank.bloodbank.repository.DonorRepository;
 import com.bloodbank.bloodbank.repository.ScreeningRecordRepository;
 import com.bloodbank.bloodbank.util.PageUtils;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,8 +36,11 @@ public class ScreeningService {
 
     private final ScreeningRecordRepository screeningRecordRepository;
     private final DonorRepository donorRepository;
+    private final AppointmentRepository appointmentRepository;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
+    private final TestingService testingService;
+    private final ScreeningRecordEnricher screeningRecordEnricher;
 
     @Transactional(readOnly = true)
     public Map<String, Object> listScreenings(UUID donorId, int page, int limit, String sort) {
@@ -43,7 +49,10 @@ public class ScreeningService {
         Page<ScreeningRecord> result = donorId != null
                 ? screeningRecordRepository.findByDonorId(donorId, pageable)
                 : screeningRecordRepository.findAll(pageable);
-        return Map.of("items", result.getContent(), "meta", PageUtils.toMeta(result, page, limit));
+        List<Map<String, Object>> items = result.getContent().stream()
+                .map(screeningRecordEnricher::enrich)
+                .toList();
+        return Map.of("items", items, "meta", PageUtils.toMeta(result, page, limit));
     }
 
     @Transactional(readOnly = true)
@@ -89,17 +98,20 @@ public class ScreeningService {
             throw new BusinessRuleException("SCREENING_CLOSED", "Screening is no longer in progress");
         }
         applyUpdates(screening, updates);
+        assignSpecialistIfNeeded(screening);
         return screeningRecordRepository.save(screening);
     }
 
     public ScreeningRecord completeScreening(UUID id, EligibilityResult eligibilityResult,
                                            String deferralReason, LocalDate deferralUntil, String notes,
-                                           BloodGroup bloodGroup) {
+                                           BloodGroup bloodGroup, UUID appointmentId) {
         requireScreeningAccess();
         ScreeningRecord screening = getById(id);
         if (screening.getStatus() != ScreeningStatus.In_Progress) {
             throw new BusinessRuleException("SCREENING_CLOSED", "Screening is no longer in progress");
         }
+
+        assignSpecialistIfNeeded(screening);
 
         screening.setEligibilityResult(eligibilityResult);
         screening.setDeferralReason(deferralReason);
@@ -121,10 +133,33 @@ public class ScreeningService {
 
         setDonorEligibility(screening.getDonorId(), eligibilityResult, deferralUntil, resolvedGroup);
         ScreeningRecord saved = screeningRecordRepository.save(screening);
+        completeLinkedAppointment(appointmentId, screening.getDonorId());
+        testingService.syncLabTestsFromScreening(saved);
         activityLogService.log(ActionType.update, "complete_screening",
                 "Completed screening with result: " + eligibilityResult,
                 "screening", null, screening.getDonorId(), null, null, null);
         return saved;
+    }
+
+    private void completeLinkedAppointment(UUID appointmentId, UUID donorId) {
+        if (appointmentId != null) {
+            appointmentRepository.findById(appointmentId).ifPresent(appointment -> {
+                appointment.setStatus(AppointmentStatus.Completed);
+                appointmentRepository.save(appointment);
+            });
+            return;
+        }
+        appointmentRepository.findAll().stream()
+                .filter(a -> donorId.equals(a.getDonorId()))
+                .filter(a -> a.getStatus() == AppointmentStatus.In_Screening
+                        || a.getStatus() == AppointmentStatus.Checked_In
+                        || a.getStatus() == AppointmentStatus.Confirmed
+                        || a.getStatus() == AppointmentStatus.Scheduled)
+                .findFirst()
+                .ifPresent(appointment -> {
+                    appointment.setStatus(AppointmentStatus.Completed);
+                    appointmentRepository.save(appointment);
+                });
     }
 
     public void setDonorEligibility(UUID donorId, EligibilityResult result, LocalDate deferralUntil, BloodGroup bloodGroup) {
@@ -159,6 +194,12 @@ public class ScreeningService {
         if (updates.getVitals() != null) screening.setVitals(updates.getVitals());
         if (updates.getBloodGroup() != null) screening.setBloodGroup(updates.getBloodGroup());
         if (updates.getNotes() != null) screening.setNotes(updates.getNotes());
+    }
+
+    private void assignSpecialistIfNeeded(ScreeningRecord screening) {
+        if ("specialist".equalsIgnoreCase(SecurityUtils.getCurrentUserRole())) {
+            screening.setSpecialistId(SecurityUtils.getCurrentUserId());
+        }
     }
 
     private void requireScreeningAccess() {

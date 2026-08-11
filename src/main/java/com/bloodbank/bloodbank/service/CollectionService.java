@@ -39,6 +39,8 @@ public class CollectionService {
     private final SystemSettingsService systemSettingsService;
     private final ActivityLogService activityLogService;
     private final DonorService donorService;
+    private final TestingService testingService;
+    private final InventoryService inventoryService;
 
     @Transactional(readOnly = true)
     public Map<String, Object> listCollections(CollectionStatus status, int page, int limit, String sort) {
@@ -155,6 +157,8 @@ public class CollectionService {
         activityLogService.log(ActionType.collection, "record_collection",
                 "Recorded collection " + saved.getDisplayCode(),
                 "collection", null, donor.getId(), null, saved.getId(), null);
+        inventoryService.createQuarantineUnitFromCollection(saved);
+        testingService.ensureLabTestForCollection(saved);
         return saved;
     }
 

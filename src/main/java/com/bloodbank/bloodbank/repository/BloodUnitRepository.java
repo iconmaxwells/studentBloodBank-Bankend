@@ -22,6 +22,7 @@ public interface BloodUnitRepository extends JpaRepository<BloodUnit, String> {
     List<BloodUnit> findByExpiryDateBetweenAndStatus(LocalDate start, LocalDate end, UnitStatus status);
 
     Optional<BloodUnit> findFirstByDonorIdOrderByCreatedAtDesc(UUID donorId);
+    Optional<BloodUnit> findByCollectionId(UUID collectionId);
 
     @Query("SELECT u.bloodGroup, u.bloodProductType, COUNT(u) FROM BloodUnit u WHERE u.status = :status GROUP BY u.bloodGroup, u.bloodProductType")
     List<Object[]> summarizeByGroupAndType(@Param("status") UnitStatus status);

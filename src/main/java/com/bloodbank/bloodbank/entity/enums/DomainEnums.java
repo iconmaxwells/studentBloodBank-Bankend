@@ -8,7 +8,7 @@ public final class DomainEnums {
 
     public enum RequestStatus { Pending, Approved, Processing, Completed, Rejected, Cancelled }
 
-    public enum UnitStatus { Available, Reserved, Issued, Expired, Discarded }
+    public enum UnitStatus { Quarantine, Available, Reserved, Issued, Expired, Discarded }
 
     public enum DonorStatus { Eligible, Not_Eligible, Deferred, Pending_Screening }
 
@@ -40,7 +40,7 @@ public final class DomainEnums {
 
     public enum PatientStatus { Critical, Stable, Improving }
 
-    public enum AppointmentStatus { Pending, Scheduled, Confirmed, Completed, Cancelled, No_Show }
+    public enum AppointmentStatus { Pending, Scheduled, Confirmed, Checked_In, In_Screening, Completed, Cancelled, No_Show }
 
     public enum AppointmentRequestStatus { Pending, Approved, Rejected }
 

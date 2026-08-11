@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 public class CompleteScreeningRequest {
@@ -16,4 +17,5 @@ public class CompleteScreeningRequest {
     private LocalDate deferralUntil;
     private String notes;
     private BloodGroup bloodGroup;
+    private UUID appointmentId;
 }

@@ -37,7 +37,42 @@ public class InventoryService {
     private final ActivityLogService activityLogService;
     private final LiveEventPublisher liveEventPublisher;
 
+    public BloodUnit createQuarantineUnitFromCollection(com.bloodbank.bloodbank.entity.Collection collection) {
+        return bloodUnitRepository.findByCollectionId(collection.getId())
+                .orElseGet(() -> saveNewUnitFromCollection(collection, UnitStatus.Quarantine));
+    }
+
+    public BloodUnit finalizeBloodUnitAfterTest(com.bloodbank.bloodbank.entity.Collection collection, boolean passed) {
+        Optional<BloodUnit> existing = bloodUnitRepository.findByCollectionId(collection.getId());
+        if (existing.isPresent()) {
+            BloodUnit unit = existing.get();
+            if (passed) {
+                unit.setStatus(UnitStatus.Available);
+                unit.setLocation(collection.getStorageLocation() != null
+                        ? collection.getStorageLocation() : unit.getLocation());
+            } else {
+                unit.setStatus(UnitStatus.Discarded);
+                unit.setDiscardedAt(LocalDateTime.now());
+            }
+            BloodUnit saved = bloodUnitRepository.save(unit);
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "unitId", saved.getId(),
+                    "action", passed ? "released" : "discarded"));
+            return saved;
+        }
+        if (passed) {
+            return saveNewUnitFromCollection(collection, UnitStatus.Available);
+        }
+        return null;
+    }
+
+    /** @deprecated Prefer {@link #createQuarantineUnitFromCollection} and {@link #finalizeBloodUnitAfterTest}. */
     public BloodUnit createBloodUnitFromCollection(com.bloodbank.bloodbank.entity.Collection collection) {
+        return finalizeBloodUnitAfterTest(collection, true);
+    }
+
+    private BloodUnit saveNewUnitFromCollection(com.bloodbank.bloodbank.entity.Collection collection,
+                                                UnitStatus status) {
         String unitId = displayCodeService.nextBloodUnitCode(collection.getBloodProductType());
         LocalDate collectionDate = collection.getCollectionDate() != null
                 ? collection.getCollectionDate() : LocalDate.now();
@@ -49,37 +84,60 @@ public class InventoryService {
                 .bloodProductType(collection.getBloodProductType())
                 .collectionDate(collectionDate)
                 .expiryDate(BloodBankUtils.calculateExpiryDate(collectionDate, collection.getBloodProductType()))
-                .status(UnitStatus.Available)
+                .status(status)
                 .location(collection.getStorageLocation())
                 .build();
         BloodUnit saved = bloodUnitRepository.save(unit);
-        liveEventPublisher.inventoryUpdated(Map.of("unitId", saved.getId(), "action", "created"));
+        liveEventPublisher.inventoryUpdated(Map.of("unitId", saved.getId(), "action", "created", "status", status));
+        activityLogService.log(ActionType.collection, "inventory_unit_created",
+                "Added blood unit " + saved.getId() + " to inventory (" + status + ")",
+                "inventory", null, collection.getDonorId(), null, collection.getId(), null);
         return saved;
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getSummary() {
-        List<Object[]> rows = bloodUnitRepository.summarizeByGroupAndType(UnitStatus.Available);
+        Map<String, Long> availableCounts = toCountMap(bloodUnitRepository.summarizeByGroupAndType(UnitStatus.Available));
+        Map<String, Long> quarantineCounts = toCountMap(bloodUnitRepository.summarizeByGroupAndType(UnitStatus.Quarantine));
         List<Map<String, Object>> summary = new ArrayList<>();
         SystemSettings settings = systemSettingsService.getSettings();
         Map<String, Object> thresholds = settings.getInventoryThresholds() != null
                 ? settings.getInventoryThresholds() : Map.of();
 
-        for (Object[] row : rows) {
-            BloodGroup group = (BloodGroup) row[0];
-            BloodProductType type = (BloodProductType) row[1];
-            long count = (Long) row[2];
-            String key = group.getValue() + "_" + type.getValue();
+        Set<String> keys = new LinkedHashSet<>();
+        keys.addAll(availableCounts.keySet());
+        keys.addAll(quarantineCounts.keySet());
+
+        for (String key : keys) {
+            String[] parts = key.split("_", 2);
+            if (parts.length < 2) continue;
+            BloodGroup group = BloodGroup.fromValue(parts[0]);
+            BloodProductType type = BloodProductType.fromValue(parts[1]);
+            long available = availableCounts.getOrDefault(key, 0L);
+            long quarantine = quarantineCounts.getOrDefault(key, 0L);
             int minThreshold = thresholds.containsKey(key) ? ((Number) thresholds.get(key)).intValue() : 5;
-            String trend = count < minThreshold ? "critical" : count < minThreshold * 2 ? "down" : "stable";
+            String trend = available < minThreshold ? "critical" : available < minThreshold * 2 ? "down" : "stable";
             summary.add(Map.of(
                     "bloodGroup", group.getValue(),
                     "bloodProductType", type.getValue(),
-                    "availableUnits", count,
+                    "availableUnits", available + quarantine,
+                    "releaseReadyUnits", available,
+                    "quarantineUnits", quarantine,
                     "trend", trend
             ));
         }
         return summary;
+    }
+
+    private Map<String, Long> toCountMap(List<Object[]> rows) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            BloodGroup group = (BloodGroup) row[0];
+            BloodProductType type = (BloodProductType) row[1];
+            long count = (Long) row[2];
+            counts.put(group.getValue() + "_" + type.getValue(), count);
+        }
+        return counts;
     }
 
     @Transactional(readOnly = true)

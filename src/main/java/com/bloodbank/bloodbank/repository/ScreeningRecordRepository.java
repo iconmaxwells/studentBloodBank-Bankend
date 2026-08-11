@@ -14,4 +14,6 @@ public interface ScreeningRecordRepository extends JpaRepository<ScreeningRecord
 
     java.util.Optional<ScreeningRecord> findFirstByDonorIdAndStatusOrderByUpdatedAtDesc(
             UUID donorId, com.bloodbank.bloodbank.entity.enums.DomainEnums.ScreeningStatus status);
+
+    java.util.Optional<ScreeningRecord> findFirstByDonorIdOrderByUpdatedAtDesc(UUID donorId);
 }

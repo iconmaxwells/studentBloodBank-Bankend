@@ -5,7 +5,9 @@ import com.bloodbank.bloodbank.entity.enums.BloodProductType;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.RewardLevel;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,5 +72,63 @@ public final class BloodBankUtils {
                 Map.of("name", "Syphilis", "result", "", "status", "In_Progress"),
                 Map.of("name", "Blood Type Confirmation", "result", "", "status", "In_Progress")
         );
+    }
+
+    public static boolean hasScreeningLabResults(Map<String, Object> vitals) {
+        if (vitals == null || vitals.isEmpty()) {
+            return false;
+        }
+        return hasScreeningResult(vitals.get("hivTest"))
+                || hasScreeningResult(vitals.get("hepatitisBTest"))
+                || hasScreeningResult(vitals.get("hepatitisCTest"))
+                || hasScreeningResult(vitals.get("syphilisTest"))
+                || hasScreeningResult(vitals.get("malariaTest"));
+    }
+
+    public static List<Map<String, Object>> buildTestPanelFromScreening(
+            Map<String, Object> vitals, String bloodGroupLabel) {
+        List<Map<String, Object>> panel = new ArrayList<>();
+        panel.add(screeningTestEntry("HIV", vitals != null ? vitals.get("hivTest") : null));
+        panel.add(screeningTestEntry("Hepatitis B", vitals != null ? vitals.get("hepatitisBTest") : null));
+        panel.add(screeningTestEntry("Hepatitis C", vitals != null ? vitals.get("hepatitisCTest") : null));
+        panel.add(screeningTestEntry("Syphilis", vitals != null ? vitals.get("syphilisTest") : null));
+        if (vitals != null && hasScreeningResult(vitals.get("malariaTest"))) {
+            panel.add(screeningTestEntry("Malaria", vitals.get("malariaTest")));
+        }
+        panel.add(screeningTestEntry("Blood Type Confirmation", bloodGroupLabel));
+        return panel;
+    }
+
+    public static boolean isInfectiousPanelComplete(List<Map<String, Object>> tests) {
+        if (tests == null || tests.isEmpty()) {
+            return false;
+        }
+        return tests.stream()
+                .filter(test -> !"Blood Type Confirmation".equals(String.valueOf(test.get("name"))))
+                .allMatch(test -> hasScreeningResult(test.get("result")));
+    }
+
+    private static Map<String, Object> screeningTestEntry(String name, Object resultObj) {
+        String result = normalizeScreeningResult(resultObj);
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("name", name);
+        entry.put("result", result);
+        entry.put("status", result.isEmpty() ? "In_Progress" : "Complete");
+        return entry;
+    }
+
+    private static String normalizeScreeningResult(Object resultObj) {
+        if (resultObj == null) {
+            return "";
+        }
+        String result = String.valueOf(resultObj).trim();
+        if (result.isEmpty() || "Pending".equalsIgnoreCase(result)) {
+            return "";
+        }
+        return result;
+    }
+
+    private static boolean hasScreeningResult(Object resultObj) {
+        return !normalizeScreeningResult(resultObj).isEmpty();
     }
 }

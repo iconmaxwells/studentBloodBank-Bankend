@@ -104,7 +104,8 @@ public class ScreeningController {
                 request.getDeferralReason(),
                 request.getDeferralUntil(),
                 request.getNotes(),
-                request.getBloodGroup()));
+                request.getBloodGroup(),
+                request.getAppointmentId()));
     }
 
     @PostMapping("/{id}/complete")
@@ -117,7 +118,8 @@ public class ScreeningController {
                 request.getDeferralReason(),
                 request.getDeferralUntil(),
                 request.getNotes(),
-                request.getBloodGroup()));
+                request.getBloodGroup(),
+                request.getAppointmentId()));
     }
 
     @PostMapping("/schedules/{appointmentId}/complete")

@@ -54,4 +54,14 @@ public class SpecialistPortalController {
             @Valid @RequestBody ScreeningRecord updates) {
         return ApiResponse.ok(specialistPortalService.updateSession(id, updates));
     }
+
+    @PostMapping("/schedules/{id}/check-in")
+    public ApiResponse<Map<String, Object>> checkInSchedule(@PathVariable UUID id) {
+        return ApiResponse.ok(specialistPortalService.checkInSchedule(id));
+    }
+
+    @PostMapping("/schedules/{id}/start-screening")
+    public ApiResponse<Map<String, Object>> startScheduleScreening(@PathVariable UUID id) {
+        return ApiResponse.ok(specialistPortalService.startScheduleScreening(id));
+    }
 }
