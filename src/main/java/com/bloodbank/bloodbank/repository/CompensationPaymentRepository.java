@@ -11,4 +11,5 @@ import java.util.UUID;
 public interface CompensationPaymentRepository extends JpaRepository<CompensationPayment, UUID> {
     Page<CompensationPayment> findByDonorId(UUID donorId, Pageable pageable);
     Page<CompensationPayment> findByStatus(PaymentStatus status, Pageable pageable);
+    java.util.List<CompensationPayment> findByDonorIdAndStatusOrderByCreatedAtAsc(UUID donorId, PaymentStatus status);
 }

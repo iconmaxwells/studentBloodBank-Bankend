@@ -29,6 +29,7 @@ public class DonorPortalService {
     private final CompensationPaymentRepository compensationPaymentRepository;
     private final AppointmentRepository appointmentRepository;
     private final DonorService donorService;
+    private final DonorEarningsService donorEarningsService;
 
     public Map<String, Object> getDashboard() {
         Donor donor = getCurrentDonor();
@@ -41,6 +42,7 @@ public class DonorPortalService {
                 .toList();
 
         DonorReward reward = donorRewardRepository.findByDonorId(donor.getId()).orElse(null);
+        Map<String, Object> earnings = donorEarningsService.getEarningsSummary(donor.getId());
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("donor", enrichDonorProfile(donor));
@@ -49,9 +51,17 @@ public class DonorPortalService {
         response.put("totalDonations", donor.getTotalDonations() != null ? donor.getTotalDonations() : 0);
         response.put("rewardPoints", reward != null && reward.getPoints() != null ? reward.getPoints() : 0);
         response.put("rewardLevel", reward != null && reward.getLevel() != null ? reward.getLevel().name() : "Bronze");
+        response.put("totalEarnings", earnings.get("totalEarnings"));
+        response.put("pendingPayment", earnings.get("pendingPayment"));
+        response.put("availableForWithdrawal", earnings.get("availableForWithdrawal"));
+        response.put("totalWithdrawn", earnings.get("totalWithdrawn"));
+        response.put("isVoluntary", earnings.get("isVoluntary"));
+        response.put("compensationRate", earnings.get("compensationRate"));
+        response.put("lastPaymentDate", earnings.get("lastPaymentDate"));
         return response;
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Object> getProfile() {
         return enrichDonorProfile(getCurrentDonor());
     }
@@ -124,6 +134,17 @@ public class DonorPortalService {
             Map<String, Object> contact = (Map<String, Object>) emergency;
             donor.setEmergencyContact(contact);
         }
+        if (updates.containsKey("isVoluntary")) {
+            donor.setIsVoluntary(parseOptionalBoolean(updates.get("isVoluntary")));
+        }
+        if (updates.get("preferredPayoutMethod") != null) {
+            donor.setPreferredPayoutMethod(
+                    com.bloodbank.bloodbank.service.PaymentSimulatorService.parseMethod(
+                            String.valueOf(updates.get("preferredPayoutMethod"))));
+        }
+        if (updates.get("payoutPhoneNumber") != null) {
+            donor.setPayoutPhoneNumber(blankToNull(String.valueOf(updates.get("payoutPhoneNumber"))));
+        }
 
         String firstName = donor.getFirstName();
         String lastName = donor.getLastName();
@@ -141,10 +162,18 @@ public class DonorPortalService {
         return donorService.getDonationHistory(donor.getId(), page, limit);
     }
 
-    public DonorReward getRewards() {
+    public Map<String, Object> getRewards() {
         Donor donor = getCurrentDonor();
-        return donorRewardRepository.findByDonorId(donor.getId())
-                .orElse(DonorReward.builder().donorId(donor.getId()).build());
+        return donorEarningsService.getRewardsView(donor.getId());
+    }
+
+    public Map<String, Object> getEarnings() {
+        return donorEarningsService.getEarningsSummary(getCurrentDonor().getId());
+    }
+
+    @Transactional
+    public Map<String, Object> withdrawEarnings(com.bloodbank.bloodbank.dto.request.WithdrawEarningsRequest request) {
+        return donorEarningsService.withdrawEarnings(getCurrentDonor().getId(), request);
     }
 
     public Map<String, Object> getCompensation(int page, int limit) {
@@ -183,6 +212,9 @@ public class DonorPortalService {
         profile.put("lastDonationDate", donor.getLastDonationDate());
         profile.put("nextEligibleDate", donor.getNextEligibleDate());
         profile.put("emergencyContact", donor.getEmergencyContact());
+        profile.put("isVoluntary", Boolean.TRUE.equals(donor.getIsVoluntary()));
+        profile.put("preferredPayoutMethod", donor.getPreferredPayoutMethod());
+        profile.put("payoutPhoneNumber", donor.getPayoutPhoneNumber());
         profile.put("memberSince", donor.getCreatedAt());
         profile.put("registeredDate", donor.getCreatedAt());
         return profile;
@@ -239,5 +271,15 @@ public class DonorPortalService {
             }
         }
         throw new ApiException("INVALID_VALUE", "Invalid gender: " + text, HttpStatus.BAD_REQUEST);
+    }
+
+    private static Boolean parseOptionalBoolean(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 }

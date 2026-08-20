@@ -14,6 +14,7 @@ import com.bloodbank.bloodbank.repository.BloodBankRepository;
 import com.bloodbank.bloodbank.repository.SupplyRequestRepository;
 import com.bloodbank.bloodbank.util.PageUtils;
 import com.bloodbank.bloodbank.util.SecurityUtils;
+import com.bloodbank.bloodbank.websocket.LiveEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,6 +35,8 @@ public class SupplyRequestService {
     private final BloodBankRepository bloodBankRepository;
     private final DisplayCodeService displayCodeService;
     private final StaffService staffService;
+    private final InventoryService inventoryService;
+    private final LiveEventPublisher liveEventPublisher;
 
     @Transactional(readOnly = true)
     public Map<String, Object> listRequests(SupplyRequestStatus status, int page, int limit, String sort) {
@@ -69,6 +72,9 @@ public class SupplyRequestService {
 
         Staff staff = resolveCurrentStaff();
 
+        long liveUnits = inventoryService.countTotalInStock(productType);
+        Integer requestedCurrentUnits = parseOptionalInteger(body.get("currentUnits"));
+
         SupplyRequest request = SupplyRequest.builder()
                 .displayCode(displayCodeService.nextCode(EntityType.SUPPLY_REQUEST))
                 .bloodGroup(bloodGroup)
@@ -80,8 +86,9 @@ public class SupplyRequestService {
                 .supplierBloodBankName(supplier.getName())
                 .requiredBy(requiredBy)
                 .reason(reason)
-                .currentUnits(parseOptionalInteger(body.get("currentUnits")))
+                .currentUnits(requestedCurrentUnits != null ? requestedCurrentUnits : (int) liveUnits)
                 .capacity(parseOptionalInteger(body.get("capacity")))
+                .inventoryApplied(false)
                 .requestedById(staff != null ? staff.getUser().getId() : SecurityUtils.getCurrentUserId())
                 .requestedByName(staff != null ? staff.getName() : SecurityUtils.getCurrentUser().getUsername())
                 .followUpNotes(new ArrayList<>())
@@ -99,12 +106,27 @@ public class SupplyRequestService {
         if (status == null) {
             throw new ApiException("BAD_REQUEST", "Status is required", HttpStatus.BAD_REQUEST);
         }
+        SupplyRequestStatus previousStatus = request.getStatus();
         request.setStatus(status);
         String message = note != null && !note.isBlank()
                 ? note
                 : "Status updated to " + status.name().replace('_', ' ');
         addFollowUpEntry(request, message, status.name());
-        return enrichRequest(supplyRequestRepository.save(request));
+
+        if (status == SupplyRequestStatus.Delivered && previousStatus != SupplyRequestStatus.Delivered) {
+            inventoryService.receiveSupplyTransfer(request);
+        }
+
+        SupplyRequest saved = supplyRequestRepository.save(request);
+
+        if (status == SupplyRequestStatus.Delivered && Boolean.TRUE.equals(saved.getInventoryApplied())) {
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "action", "transfer_delivered",
+                    "supplyRequestId", saved.getId(),
+                    "unitsAdded", saved.getUnitsRequested()));
+        }
+
+        return enrichRequest(saved);
     }
 
     public Map<String, Object> addFollowUp(UUID id, String note) {
@@ -166,6 +188,7 @@ public class SupplyRequestService {
         row.put("reason", request.getReason());
         row.put("currentUnits", request.getCurrentUnits());
         row.put("capacity", request.getCapacity());
+        row.put("inventoryApplied", request.getInventoryApplied());
         row.put("requestedById", request.getRequestedById());
         row.put("requestedByName", request.getRequestedByName());
         row.put("followUpNotes", request.getFollowUpNotes() != null ? request.getFollowUpNotes() : List.of());

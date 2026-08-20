@@ -28,12 +28,8 @@ public class InventoryExpiryJob {
     @Transactional
     public void markExpiredUnits() {
         LocalDate today = LocalDate.now();
-        List<BloodUnit> expired = bloodUnitRepository.findAll().stream()
-                .filter(u -> u.getStatus() == UnitStatus.Available
-                        || u.getStatus() == UnitStatus.Reserved
-                        || u.getStatus() == UnitStatus.Quarantine)
-                .filter(u -> u.getExpiryDate() != null && u.getExpiryDate().isBefore(today))
-                .toList();
+        List<BloodUnit> expired = bloodUnitRepository.findByStatusInAndExpiryDateBefore(
+                List.of(UnitStatus.Available, UnitStatus.Reserved, UnitStatus.Quarantine), today);
 
         if (expired.isEmpty()) {
             return;

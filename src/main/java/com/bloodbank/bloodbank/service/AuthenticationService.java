@@ -98,6 +98,7 @@ public class AuthenticationService {
                 .idType(request.getIdType())
                 .idNumber(request.getIdNumber())
                 .status(DonorStatus.Pending_Screening)
+                .isVoluntary(Boolean.TRUE.equals(request.getIsVoluntary()))
                 .build());
 
         donorRewardRepository.save(DonorReward.builder().donorId(donor.getId()).build());

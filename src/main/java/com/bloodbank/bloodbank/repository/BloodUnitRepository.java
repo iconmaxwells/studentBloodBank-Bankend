@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,8 +22,17 @@ public interface BloodUnitRepository extends JpaRepository<BloodUnit, String> {
     Page<BloodUnit> findByStatus(UnitStatus status, Pageable pageable);
     List<BloodUnit> findByExpiryDateBetweenAndStatus(LocalDate start, LocalDate end, UnitStatus status);
 
+    List<BloodUnit> findByStatusInAndExpiryDateBefore(Collection<UnitStatus> statuses, LocalDate expiryDate);
+
     Optional<BloodUnit> findFirstByDonorIdOrderByCreatedAtDesc(UUID donorId);
     Optional<BloodUnit> findByCollectionId(UUID collectionId);
+
+    long countByBloodGroupAndBloodProductTypeAndStatus(
+            BloodGroup bloodGroup, BloodProductType bloodProductType, UnitStatus status);
+
+    long countByBloodProductTypeAndStatus(BloodProductType bloodProductType, UnitStatus status);
+
+    long countByBloodProductTypeAndStatusIn(BloodProductType bloodProductType, Collection<UnitStatus> statuses);
 
     @Query("SELECT u.bloodGroup, u.bloodProductType, COUNT(u) FROM BloodUnit u WHERE u.status = :status GROUP BY u.bloodGroup, u.bloodProductType")
     List<Object[]> summarizeByGroupAndType(@Param("status") UnitStatus status);

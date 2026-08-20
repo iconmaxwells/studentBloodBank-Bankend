@@ -123,7 +123,9 @@ public class CollectionService {
         collection.setTestResult(TestOverallStatus.Pending);
 
         SystemSettings settings = systemSettingsService.getSettings();
-        if (collection.getCompensationAmount() == null) {
+        if (Boolean.TRUE.equals(donor.getIsVoluntary())) {
+            collection.setCompensationAmount(0.0);
+        } else if (collection.getCompensationAmount() == null) {
             collection.setCompensationAmount(settings.getDonorCompensationDefault());
         }
 

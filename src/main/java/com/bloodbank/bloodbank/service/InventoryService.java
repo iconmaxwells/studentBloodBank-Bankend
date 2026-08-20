@@ -120,7 +120,8 @@ public class InventoryService {
             summary.add(Map.of(
                     "bloodGroup", group.getValue(),
                     "bloodProductType", type.getValue(),
-                    "availableUnits", available + quarantine,
+                    "totalInStock", available + quarantine,
+                    "availableUnits", available,
                     "releaseReadyUnits", available,
                     "quarantineUnits", quarantine,
                     "trend", trend
@@ -191,6 +192,24 @@ public class InventoryService {
         BloodUnit saved = bloodUnitRepository.save(unit);
         activityLogService.log(ActionType.update, "release_unit", "Released unit " + unitId,
                 "inventory", null, null, null, null, null);
+        liveEventPublisher.inventoryUpdated(Map.of("unitId", unitId, "action", "released"));
+        return saved;
+    }
+
+    public BloodUnit issueUnit(String unitId) {
+        requireManageInventory();
+        BloodUnit unit = getUnitById(unitId);
+        if (unit.getStatus() != UnitStatus.Reserved && unit.getStatus() != UnitStatus.Available) {
+            throw new BusinessRuleException("UNIT_NOT_ISSUABLE",
+                    "Only available or reserved units can be issued");
+        }
+        unit.setStatus(UnitStatus.Issued);
+        unit.setIssuedAt(LocalDateTime.now());
+        unit.setReservedForRequestId(null);
+        BloodUnit saved = bloodUnitRepository.save(unit);
+        activityLogService.log(ActionType.update, "issue_unit", "Issued unit " + unitId,
+                "inventory", null, null, null, null, null);
+        liveEventPublisher.inventoryUpdated(Map.of("unitId", unitId, "action", "issued"));
         return saved;
     }
 
@@ -203,7 +222,70 @@ public class InventoryService {
         BloodUnit saved = bloodUnitRepository.save(unit);
         activityLogService.log(ActionType.update, "discard_unit", "Discarded unit " + unitId + ": " + reason,
                 "inventory", null, null, null, null, null);
+        liveEventPublisher.inventoryUpdated(Map.of("unitId", unitId, "action", "discarded"));
         return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public long countAvailableUnits(BloodGroup bloodGroup, BloodProductType productType) {
+        if (bloodGroup != null) {
+            return bloodUnitRepository.countByBloodGroupAndBloodProductTypeAndStatus(
+                    bloodGroup, productType, UnitStatus.Available);
+        }
+        return bloodUnitRepository.countByBloodProductTypeAndStatus(productType, UnitStatus.Available);
+    }
+
+    @Transactional(readOnly = true)
+    public long countTotalInStock(BloodProductType productType) {
+        return bloodUnitRepository.countByBloodProductTypeAndStatusIn(
+                productType, List.of(UnitStatus.Available, UnitStatus.Quarantine));
+    }
+
+    /**
+     * Adds received partner-bank units to local inventory when a supply transfer is delivered.
+     */
+    public void receiveSupplyTransfer(SupplyRequest request) {
+        if (Boolean.TRUE.equals(request.getInventoryApplied())) {
+            return;
+        }
+        if (request.getBloodProductType() == null || request.getUnitsRequested() == null) {
+            throw new BusinessRuleException("INVALID_SUPPLY_REQUEST", "Supply request is missing product details");
+        }
+        BloodGroup group = request.getBloodGroup() != null ? request.getBloodGroup() : BloodGroup.O_POSITIVE;
+        BloodProductType productType = request.getBloodProductType();
+        int count = request.getUnitsRequested();
+        String location = "Transfer Receipt"
+                + (request.getSupplierBloodBankName() != null ? " — " + request.getSupplierBloodBankName() : "");
+
+        List<String> createdIds = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            String unitId = displayCodeService.nextBloodUnitCode(productType);
+            LocalDate collectionDate = LocalDate.now();
+            BloodUnit unit = BloodUnit.builder()
+                    .id(unitId)
+                    .bloodGroup(group)
+                    .bloodProductType(productType)
+                    .collectionDate(collectionDate)
+                    .expiryDate(BloodBankUtils.calculateExpiryDate(collectionDate, productType))
+                    .status(UnitStatus.Available)
+                    .location(location)
+                    .build();
+            bloodUnitRepository.save(unit);
+            createdIds.add(unitId);
+        }
+
+        request.setInventoryApplied(true);
+        activityLogService.log(ActionType.update, "supply_transfer_received",
+                "Received " + count + " " + group.getValue() + " " + productType.getValue()
+                        + " units from supply request " + request.getDisplayCode(),
+                "inventory", request.getId(), null, null, null, null);
+        liveEventPublisher.inventoryUpdated(Map.of(
+                "action", "transfer_received",
+                "supplyRequestId", request.getId(),
+                "unitsAdded", count,
+                "bloodGroup", group.getValue(),
+                "bloodProductType", productType.getValue(),
+                "unitIds", createdIds));
     }
 
     @Transactional(readOnly = true)
@@ -281,7 +363,11 @@ public class InventoryService {
                     .allocatedBy(SecurityUtils.getCurrentUserId())
                     .build());
             allocated.add(unit);
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "unitId", unit.getId(), "action", "reserved", "requestId", requestId));
         }
+        liveEventPublisher.inventoryUpdated(Map.of(
+                "action", "allocated", "requestId", requestId, "unitsReserved", allocated.size()));
         return allocated;
     }
 
@@ -292,7 +378,14 @@ public class InventoryService {
                     .orElseThrow(() -> new ResourceNotFoundException("Blood unit"));
             unit.setStatus(UnitStatus.Issued);
             unit.setIssuedAt(LocalDateTime.now());
+            unit.setReservedForRequestId(null);
             bloodUnitRepository.save(unit);
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "unitId", unit.getId(), "action", "issued", "requestId", requestId));
+        }
+        if (!allocations.isEmpty()) {
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "action", "request_issued", "requestId", requestId, "unitsIssued", allocations.size()));
         }
     }
 
@@ -303,7 +396,14 @@ public class InventoryService {
                 unit.setStatus(UnitStatus.Available);
                 unit.setReservedForRequestId(null);
                 bloodUnitRepository.save(unit);
+                liveEventPublisher.inventoryUpdated(Map.of(
+                        "unitId", unit.getId(), "action", "released", "requestId", requestId));
             });
+        }
+        if (!allocations.isEmpty()) {
+            allocationRepository.deleteAll(allocations);
+            liveEventPublisher.inventoryUpdated(Map.of(
+                    "action", "allocation_released", "requestId", requestId));
         }
     }
 

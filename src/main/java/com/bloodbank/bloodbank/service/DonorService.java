@@ -238,6 +238,10 @@ public class DonorService {
         if (updates.getWeight() != null) donor.setWeight(updates.getWeight());
         if (updates.getHeight() != null) donor.setHeight(updates.getHeight());
         if (updates.getStatus() != null) donor.setStatus(updates.getStatus());
+        if (updates.getNextEligibleDate() != null) donor.setNextEligibleDate(updates.getNextEligibleDate());
+        if (updates.getIsVoluntary() != null) donor.setIsVoluntary(updates.getIsVoluntary());
+        if (updates.getPreferredPayoutMethod() != null) donor.setPreferredPayoutMethod(updates.getPreferredPayoutMethod());
+        if (updates.getPayoutPhoneNumber() != null) donor.setPayoutPhoneNumber(updates.getPayoutPhoneNumber());
         if (updates.getEmergencyContact() != null) donor.setEmergencyContact(updates.getEmergencyContact());
         if (updates.getMedicalHistory() != null) donor.setMedicalHistory(updates.getMedicalHistory());
     }

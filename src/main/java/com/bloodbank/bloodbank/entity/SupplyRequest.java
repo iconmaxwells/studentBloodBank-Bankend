@@ -64,6 +64,11 @@ public class SupplyRequest {
 
     private Integer capacity;
 
+    /** Set when delivered units have been added to local inventory (prevents double-counting). */
+    @Column(name = "inventory_applied")
+    @Builder.Default
+    private Boolean inventoryApplied = false;
+
     @Column(name = "requested_by_id")
     private UUID requestedById;
 

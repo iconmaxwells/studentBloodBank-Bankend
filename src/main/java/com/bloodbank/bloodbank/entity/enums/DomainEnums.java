@@ -50,6 +50,8 @@ public final class DomainEnums {
 
     public enum PaymentStatus { Pending, Paid }
 
+    public enum WithdrawalStatus { Pending, Completed, Failed }
+
     public enum TransactionType { Revenue, Expense }
 
     public enum TransactionStatus { Pending, Completed, Failed }

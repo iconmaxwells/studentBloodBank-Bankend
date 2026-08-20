@@ -27,4 +27,7 @@ public class DonorRegisterRequest {
     private String idNumber;
     @AssertTrue
     private Boolean agreeToTerms;
+
+    /** When true, donor opts out of monetary compensation (voluntary donation). */
+    private Boolean isVoluntary;
 }

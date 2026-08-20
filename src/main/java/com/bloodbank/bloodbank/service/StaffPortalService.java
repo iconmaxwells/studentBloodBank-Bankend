@@ -171,6 +171,12 @@ public class StaffPortalService {
 
     public CompensationPayment markPaymentPaid(UUID paymentId, CompensationMethod method, String simulatorReference) {
         requireStaff();
+        return completeCompensationPayment(paymentId, method, simulatorReference, true);
+    }
+
+    /** Marks a pending compensation payment as paid (used by staff payout and donor self-withdrawal). */
+    public CompensationPayment completeCompensationPayment(UUID paymentId, CompensationMethod method,
+                                                         String simulatorReference, boolean notifyDonor) {
         CompensationPayment payment = compensationPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Compensation payment"));
         if (payment.getStatus() == PaymentStatus.Paid) {
@@ -198,10 +204,12 @@ public class StaffPortalService {
                 .paymentMethod(method != null ? method.name() : "Cash")
                 .build());
 
-        donorRepository.findById(saved.getDonorId()).ifPresent(donor ->
-                notificationService.notifyDonor(donor.getUser().getId(),
-                        "Compensation paid", "Your compensation of " + saved.getAmount() + " has been paid.",
-                        "compensation", saved.getId().toString()));
+        if (notifyDonor) {
+            donorRepository.findById(saved.getDonorId()).ifPresent(donor ->
+                    notificationService.notifyDonor(donor.getUser().getId(),
+                            "Compensation paid", "Your compensation of " + saved.getAmount() + " has been paid.",
+                            "compensation", saved.getId().toString()));
+        }
 
         activityLogService.log(ActionType.update, "mark_payment_paid",
                 "Marked compensation payment as paid", "finance", null, saved.getDonorId(), null, null, null);

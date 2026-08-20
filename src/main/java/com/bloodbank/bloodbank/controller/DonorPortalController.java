@@ -1,10 +1,8 @@
 package com.bloodbank.bloodbank.controller;
 
 import com.bloodbank.bloodbank.dto.common.ApiResponse;
+import com.bloodbank.bloodbank.dto.request.WithdrawEarningsRequest;
 import com.bloodbank.bloodbank.entity.CompensationPayment;
-import com.bloodbank.bloodbank.entity.DonorReward;
-import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
-import com.bloodbank.bloodbank.entity.enums.DomainEnums.PaymentStatus;
 import com.bloodbank.bloodbank.service.DonorPortalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -42,8 +40,18 @@ public class DonorPortalController {
     }
 
     @GetMapping("/rewards")
-    public ApiResponse<DonorReward> getRewards() {
+    public ApiResponse<Map<String, Object>> getRewards() {
         return ApiResponse.ok(donorPortalService.getRewards());
+    }
+
+    @GetMapping("/earnings")
+    public ApiResponse<Map<String, Object>> getEarnings() {
+        return ApiResponse.ok(donorPortalService.getEarnings());
+    }
+
+    @PostMapping("/earnings/withdraw")
+    public ApiResponse<Map<String, Object>> withdrawEarnings(@Valid @RequestBody WithdrawEarningsRequest request) {
+        return ApiResponse.ok(donorPortalService.withdrawEarnings(request));
     }
 
     @PostMapping("/rewards/redeem")

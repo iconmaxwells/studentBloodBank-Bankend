@@ -86,6 +86,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/donors", "/api/v1/donors/**").hasAnyRole("STAFF", "ADMIN", "DONOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/donors", "/api/v1/donors/**").hasAnyRole("ADMIN")
                         .requestMatchers("/api/v1/activity-logs/**").hasAnyRole("ADMIN")
+                        .requestMatchers("/api/v1/reports/**").hasAnyRole("ADMIN")
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/requests/*/approve",

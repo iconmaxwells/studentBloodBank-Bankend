@@ -1,6 +1,7 @@
 package com.bloodbank.bloodbank.entity;
 
 import com.bloodbank.bloodbank.entity.enums.BloodGroup;
+import com.bloodbank.bloodbank.entity.enums.DomainEnums.CompensationMethod;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.DonorStatus;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.Gender;
 import com.bloodbank.bloodbank.entity.enums.DomainEnums.IdType;
@@ -91,6 +92,18 @@ public class Donor {
 
     @Column(name = "registered_date")
     private LocalDate registeredDate;
+
+    /** When true, the donor donates voluntarily and does not receive monetary compensation. */
+    @Column(name = "is_voluntary")
+    @Builder.Default
+    private Boolean isVoluntary = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_payout_method")
+    private CompensationMethod preferredPayoutMethod;
+
+    @Column(name = "payout_phone_number")
+    private String payoutPhoneNumber;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

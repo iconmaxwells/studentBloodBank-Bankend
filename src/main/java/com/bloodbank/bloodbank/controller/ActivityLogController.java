@@ -31,7 +31,7 @@ public class ActivityLogController {
             @RequestParam(required = false) UUID staffId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        Map<String, Object> result = activityLogQueryService.list(page, limit, sort, category, staffId, from, to);
+        Map<String, Object> result = activityLogQueryService.list(page, limit, sort, search, category, staffId, from, to);
         return ControllerUtils.paged(result);
     }
 

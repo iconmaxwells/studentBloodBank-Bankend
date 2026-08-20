@@ -1,8 +1,6 @@
 package com.bloodbank.bloodbank.service;
 
 import com.bloodbank.bloodbank.entity.*;
-import com.bloodbank.bloodbank.entity.enums.DomainEnums.RequestStatus;
-import com.bloodbank.bloodbank.entity.enums.DomainEnums.UnitStatus;
 import com.bloodbank.bloodbank.exception.ApiException;
 import com.bloodbank.bloodbank.exception.ResourceNotFoundException;
 import com.bloodbank.bloodbank.repository.*;
@@ -11,7 +9,6 @@ import com.bloodbank.bloodbank.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,10 +29,15 @@ public class ReportService {
     private final ReportJobRepository reportJobRepository;
     private final InventoryService inventoryService;
     private final AdminDashboardService adminDashboardService;
+    private final ReportJobAsyncRunner reportJobAsyncRunner;
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> collectionsReport(LocalDate from, LocalDate to) {
         requireAdmin();
+        return fetchCollectionsReport(from, to);
+    }
+
+    private List<Map<String, Object>> fetchCollectionsReport(LocalDate from, LocalDate to) {
         return collectionRepository.findAll().stream()
                 .filter(c -> inRange(c.getCollectionDate(), from, to))
                 .map(c -> Map.<String, Object>of(
@@ -53,12 +55,20 @@ public class ReportService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> inventoryReport() {
         requireAdmin();
+        return fetchInventoryReport();
+    }
+
+    private List<Map<String, Object>> fetchInventoryReport() {
         return inventoryService.getSummary();
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> requestsReport(LocalDate from, LocalDate to) {
         requireAdmin();
+        return fetchRequestsReport(from, to);
+    }
+
+    private List<Map<String, Object>> fetchRequestsReport(LocalDate from, LocalDate to) {
         return bloodRequestRepository.findAll().stream()
                 .filter(r -> inRange(r.getRequestDate(), from, to))
                 .map(r -> Map.<String, Object>of(
@@ -78,6 +88,10 @@ public class ReportService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> donorsReport() {
         requireAdmin();
+        return fetchDonorsReport();
+    }
+
+    private List<Map<String, Object>> fetchDonorsReport() {
         return donorRepository.findAll().stream()
                 .map(d -> Map.<String, Object>of(
                         "displayCode", d.getDisplayCode(),
@@ -94,10 +108,10 @@ public class ReportService {
     public Map<String, Object> customReport(LocalDate from, LocalDate to, String type) {
         requireAdmin();
         return switch (type != null ? type : "collections") {
-            case "inventory" -> Map.of("type", "inventory", "data", inventoryReport());
-            case "requests" -> Map.of("type", "requests", "data", requestsReport(from, to));
-            case "donors" -> Map.of("type", "donors", "data", donorsReport());
-            default -> Map.of("type", "collections", "data", collectionsReport(from, to));
+            case "inventory" -> Map.of("type", "inventory", "data", fetchInventoryReport());
+            case "requests" -> Map.of("type", "requests", "data", fetchRequestsReport(from, to));
+            case "donors" -> Map.of("type", "donors", "data", fetchDonorsReport());
+            default -> Map.of("type", "collections", "data", fetchCollectionsReport(from, to));
         };
     }
 
@@ -110,13 +124,13 @@ public class ReportService {
                 .format(format)
                 .status("pending")
                 .build());
-        processJob(job.getId(), request);
+        reportJobAsyncRunner.runJob(job.getId(), request);
         return reportJobRepository.findById(job.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Report job"));
     }
 
-    @Async
-    public void processJobAsync(UUID jobId, Map<String, Object> request) {
+    @Transactional
+    public void executeJob(UUID jobId, Map<String, Object> request) {
         processJob(jobId, request);
     }
 
@@ -133,7 +147,7 @@ public class ReportService {
             switch (type) {
                 case "inventory" -> {
                     headers = List.of("bloodGroup", "bloodProductType", "availableUnits", "trend");
-                    rows = inventoryReport().stream()
+                    rows = fetchInventoryReport().stream()
                             .map(m -> List.of(
                                     ExportUtils.mapValue(m, "bloodGroup"),
                                     ExportUtils.mapValue(m, "bloodProductType"),
@@ -143,7 +157,7 @@ public class ReportService {
                 }
                 case "requests" -> {
                     headers = List.of("displayCode", "bloodGroup", "productType", "unitsRequested", "status", "requestDate");
-                    rows = requestsReport(from, to).stream()
+                    rows = fetchRequestsReport(from, to).stream()
                             .map(m -> List.of(
                                     ExportUtils.mapValue(m, "displayCode"),
                                     ExportUtils.mapValue(m, "bloodGroup"),
@@ -155,7 +169,7 @@ public class ReportService {
                 }
                 case "donors" -> {
                     headers = List.of("displayCode", "name", "bloodGroup", "status", "totalDonations");
-                    rows = donorsReport().stream()
+                    rows = fetchDonorsReport().stream()
                             .map(m -> List.of(
                                     ExportUtils.mapValue(m, "displayCode"),
                                     ExportUtils.mapValue(m, "name"),
@@ -166,7 +180,7 @@ public class ReportService {
                 }
                 default -> {
                     headers = List.of("displayCode", "bloodGroup", "productType", "volumeMl", "status", "collectionDate");
-                    rows = collectionsReport(from, to).stream()
+                    rows = fetchCollectionsReport(from, to).stream()
                             .map(m -> List.of(
                                     ExportUtils.mapValue(m, "displayCode"),
                                     ExportUtils.mapValue(m, "bloodGroup"),
@@ -268,7 +282,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getInventoryDistribution() {
         requireAdmin();
-        return inventoryReport();
+        return fetchInventoryReport();
     }
 
     @Transactional(readOnly = true)

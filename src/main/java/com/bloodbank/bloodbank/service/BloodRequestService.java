@@ -208,14 +208,16 @@ public class BloodRequestService {
         activityLogService.log(ActionType.update, "process_request", "Processing request " + saved.getDisplayCode(),
                 "request", saved.getId(), null, saved.getHospitalId(), null, null);
         publishStatusChange(saved);
+        liveEventPublisher.inventoryUpdated(Map.of(
+                "action", "reserved", "requestId", saved.getId(), "unitsReserved", allocated.size()));
         return saved;
     }
 
     public BloodRequest completeRequest(UUID id) {
         requireStaffOrAdmin();
         BloodRequest request = getById(id);
-        if (request.getStatus() != RequestStatus.Processing && request.getStatus() != RequestStatus.Approved) {
-            throw new BusinessRuleException("INVALID_STATUS", "Request cannot be completed from current status");
+        if (request.getStatus() != RequestStatus.Processing) {
+            throw new BusinessRuleException("INVALID_STATUS", "Only processing requests can be completed");
         }
         inventoryService.issueAllocatedUnits(request.getId());
         request.setStatus(RequestStatus.Completed);

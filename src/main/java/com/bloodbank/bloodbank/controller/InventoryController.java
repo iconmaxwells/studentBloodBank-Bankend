@@ -57,7 +57,7 @@ public class InventoryController {
 
     @PostMapping("/units/{id}/issue")
     public ApiResponse<BloodUnit> issue(@PathVariable String id) {
-        return ApiResponse.ok(inventoryService.releaseUnit(id));
+        return ApiResponse.ok(inventoryService.issueUnit(id));
     }
 
     @PostMapping("/units/{id}/discard")
